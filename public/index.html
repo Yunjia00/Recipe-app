@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>我的食谱</title>
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&family=Noto+Sans+SC:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -433,6 +434,7 @@
   }
   .pw-confirm:hover { background: var(--accent); }
 
+</style>
 </head>
 <body>
 <div id="loadingOverlay">
@@ -528,22 +530,42 @@
 // 会话内记住密码，不用每次都输
 let sessionPassword = sessionStorage.getItem('recipe_pw') || '';
 
-// 返回 Promise：resolve(密码) 或 reject(取消)
-let pwResolve = null, pwReject = null;
+// 支持多个并发写请求等待同一次密码输入
+let pwWaiters = [];
+let pwOverlayOpen = false;
+
+function queuePasswordWaiter(resolve, reject) {
+  pwWaiters.push({ resolve, reject });
+}
+
+function resolvePasswordWaiters(pw) {
+  const waiters = pwWaiters;
+  pwWaiters = [];
+  waiters.forEach(w => w.resolve(pw));
+}
+
+function rejectPasswordWaiters(err) {
+  const waiters = pwWaiters;
+  pwWaiters = [];
+  waiters.forEach(w => w.reject(err));
+}
 
 function requirePassword() {
   // 如果已有密码，直接用
   if (sessionPassword) return Promise.resolve(sessionPassword);
-  // 否则弹窗
+
+  // 否则弹窗（若已打开，直接复用同一轮输入）
   return new Promise((resolve, reject) => {
-    pwResolve = resolve;
-    pwReject = reject;
-    const overlay = document.getElementById('pwOverlay');
-    const input = document.getElementById('pwInput');
-    input.value = '';
-    input.classList.remove('error');
-    overlay.classList.add('open');
-    setTimeout(() => input.focus(), 50);
+    queuePasswordWaiter(resolve, reject);
+    if (!pwOverlayOpen) {
+      pwOverlayOpen = true;
+      const overlay = document.getElementById('pwOverlay');
+      const input = document.getElementById('pwInput');
+      input.value = '';
+      input.classList.remove('error');
+      overlay.classList.add('open');
+      setTimeout(() => input.focus(), 50);
+    }
   });
 }
 
@@ -552,12 +574,14 @@ function pwConfirm() {
   const pw = input.value;
   if (!pw) return;
   document.getElementById('pwOverlay').classList.remove('open');
-  if (pwResolve) { pwResolve(pw); pwResolve = null; pwReject = null; }
+  pwOverlayOpen = false;
+  resolvePasswordWaiters(pw);
 }
 
 function pwCancel() {
   document.getElementById('pwOverlay').classList.remove('open');
-  if (pwReject) { pwReject(new Error('cancelled')); pwResolve = null; pwReject = null; }
+  pwOverlayOpen = false;
+  rejectPasswordWaiters(new Error('cancelled'));
 }
 
 function pwWrongPassword() {
@@ -570,12 +594,21 @@ function pwWrongPassword() {
   input.classList.add('error');
   setTimeout(() => input.classList.remove('error'), 600);
   overlay.classList.add('open');
+  pwOverlayOpen = true;
   setTimeout(() => input.focus(), 50);
+
   // 重新等待用户输入
-  return new Promise((resolve, reject) => {
-    pwResolve = resolve;
-    pwReject = reject;
-  });
+  return new Promise((resolve, reject) => queuePasswordWaiter(resolve, reject));
+}
+
+async function readJsonSafe(res) {
+  const text = await res.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch (_) {
+    return { raw: text };
+  }
 }
 
 // ─── API ──────────────────────────────────────────────────────────────────────
@@ -588,7 +621,7 @@ async function api(method, path, body) {
   if (body !== undefined) opts.body = JSON.stringify(body);
   const res = await fetch('/api' + path, opts);
   if (!res.ok) throw new Error(await res.text());
-  return res.json();
+  return readJsonSafe(res);
 }
 
 // 需要密码的 API 调用，自动处理弹窗和重试
@@ -636,14 +669,14 @@ async function apiAuth(method, path, body) {
     sessionPassword = pw;
     sessionStorage.setItem('recipe_pw', pw);
     if (!res2.ok) throw new Error(await res2.text());
-    return res2.json();
+    return readJsonSafe(res2);
   }
 
   // 密码正确，记住它
   sessionPassword = pw;
   sessionStorage.setItem('recipe_pw', pw);
   if (!res.ok) throw new Error(await res.text());
-  return res.json();
+  return readJsonSafe(res);
 }
 
 function showStatus(type, text) {
@@ -940,9 +973,12 @@ function toggleOwned(name, checked) {
     const updates = Object.entries(pendingOwnedUpdates).map(([name, owned]) => ({ name, owned }));
     pendingOwnedUpdates = {};
     try {
-      await api('PUT', '/ingredients/owned', { updates });
+      await apiAuth('PUT', '/ingredients/owned', { updates });
       showStatus('saved', '已保存');
-    } catch(e) { showStatus('error', '保存失败'); }
+    } catch(e) {
+      if (e.message !== 'cancelled') showStatus('error', '保存失败');
+      else showStatus('', '');
+    }
   }, 800);
 }
 
@@ -987,13 +1023,16 @@ async function addCategory() {
   if (allCats.includes(name)) { showStatus('error', '分类已存在'); return; }
   showStatus('saving', '保存中...');
   try {
-    await api('POST', '/ingredients/category', { name });
+    await apiAuth('POST', '/ingredients/category', { name });
     if (!state.extraCategories) state.extraCategories = [];
     state.extraCategories.push(name);
     input.value = '';
     showStatus('saved', '已保存');
     renderManage();
-  } catch(e) { showStatus('error', '添加失败'); }
+  } catch(e) {
+    if (e.message !== 'cancelled') showStatus('error', '添加失败');
+    else showStatus('', '');
+  }
 }
 
 // ─── EVENT DELEGATION ─────────────────────────────────────────────────────────
@@ -1031,11 +1070,14 @@ document.addEventListener('click', async function(e) {
     if (btn.dataset.confirming) {
       showStatus('saving', '删除中...');
       try {
-        await api('DELETE', `/ingredients/${encodeURIComponent(name)}`);
+        await apiAuth('DELETE', `/ingredients/${encodeURIComponent(name)}`);
         state.ingredients = state.ingredients.filter(i => i.name !== name);
         showStatus('saved', '已删除');
         renderManage(); renderIngredients(); renderRecipes();
-      } catch(e) { showStatus('error', '删除失败'); }
+      } catch(e) {
+        if (e.message !== 'cancelled') showStatus('error', '删除失败');
+        else showStatus('', '');
+      }
     } else {
       btn.dataset.confirming = '1';
       btn.textContent = '确认';
@@ -1058,12 +1100,15 @@ document.addEventListener('click', async function(e) {
     }
     showStatus('saving', '保存中...');
     try {
-      await api('POST', '/ingredients', { name, category: cat, owned: false });
+      await apiAuth('POST', '/ingredients', { name, category: cat, owned: false });
       state.ingredients.push({ name, category: cat, owned: false });
       input.value = '';
       showStatus('saved', '已保存');
       renderManage(); renderRecipes();
-    } catch(e) { showStatus('error', '添加失败'); }
+    } catch(e) {
+      if (e.message !== 'cancelled') showStatus('error', '添加失败');
+      else showStatus('', '');
+    }
   }
 
   if (action === 'del-cat') {
@@ -1071,12 +1116,15 @@ document.addEventListener('click', async function(e) {
     if (btn.dataset.confirming) {
       showStatus('saving', '删除中...');
       try {
-        await api('DELETE', `/ingredients/category/${encodeURIComponent(cat)}`);
+        await apiAuth('DELETE', `/ingredients/category/${encodeURIComponent(cat)}`);
         state.ingredients = state.ingredients.filter(i => i.category !== cat);
         state.extraCategories = (state.extraCategories || []).filter(c => c !== cat);
         showStatus('saved', '已删除');
         renderManage(); renderIngredients(); renderRecipes();
-      } catch(e) { showStatus('error', '删除失败'); }
+      } catch(e) {
+        if (e.message !== 'cancelled') showStatus('error', '删除失败');
+        else showStatus('', '');
+      }
     } else {
       btn.dataset.confirming = '1';
       btn.textContent = '确认删除分类';
@@ -1127,12 +1175,16 @@ async function finishRenameCategory(inp) {
   if (!newCat || newCat === oldCat) { renderManage(); return; }
   showStatus('saving', '保存中...');
   try {
-    await api('PUT', '/ingredients/category/rename', { oldName: oldCat, newName: newCat });
+    await apiAuth('PUT', '/ingredients/category/rename', { oldName: oldCat, newName: newCat });
     state.ingredients.forEach(i => { if (i.category === oldCat) i.category = newCat; });
     state.extraCategories = (state.extraCategories || []).map(c => c === oldCat ? newCat : c);
     showStatus('saved', '已保存');
     renderManage();
-  } catch(e) { showStatus('error', '重命名失败'); renderManage(); }
+  } catch(e) {
+    if (e.message !== 'cancelled') showStatus('error', '重命名失败');
+    else showStatus('', '');
+    renderManage();
+  }
 }
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────

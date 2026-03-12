@@ -7,10 +7,13 @@ const fs = require('fs');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, '../data/recipes.db');
+const PUBLIC_DIR = fs.existsSync(path.join(__dirname, '../public'))
+  ? path.join(__dirname, '../public')
+  : path.join(__dirname, 'public');
 
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, '../public')));
+app.use(express.static(PUBLIC_DIR));
 
 // ─── 初始化数据库 ──────────────────────────────────────────────────────────────
 
@@ -133,7 +136,7 @@ app.get('/api/ingredients', (req, res) => {
 });
 
 // 新增食材
-app.post('/api/ingredients', (req, res) => {
+app.post('/api/ingredients', requireAuth, (req, res) => {
   const { name, category, owned } = req.body;
   try {
     db.prepare('INSERT INTO ingredients (name, category, owned) VALUES (?, ?, ?)').run(name, category, owned ? 1 : 0);
@@ -144,7 +147,7 @@ app.post('/api/ingredients', (req, res) => {
 });
 
 // 更新食材 owned 状态（批量）
-app.put('/api/ingredients/owned', (req, res) => {
+app.put('/api/ingredients/owned', requireAuth, (req, res) => {
   const { updates } = req.body; // [{ name, owned }]
   const update = db.prepare('UPDATE ingredients SET owned=? WHERE name=?');
   const tx = db.transaction(() => {
@@ -155,13 +158,13 @@ app.put('/api/ingredients/owned', (req, res) => {
 });
 
 // 删除食材
-app.delete('/api/ingredients/:name', (req, res) => {
+app.delete('/api/ingredients/:name', requireAuth, (req, res) => {
   db.prepare('DELETE FROM ingredients WHERE name=?').run(decodeURIComponent(req.params.name));
   res.json({ ok: true });
 });
 
 // 删除整个分类
-app.delete('/api/ingredients/category/:cat', (req, res) => {
+app.delete('/api/ingredients/category/:cat', requireAuth, (req, res) => {
   const cat = decodeURIComponent(req.params.cat);
   db.prepare('DELETE FROM ingredients WHERE category=?').run(cat);
   db.prepare('DELETE FROM extra_categories WHERE name=?').run(cat);
@@ -169,7 +172,7 @@ app.delete('/api/ingredients/category/:cat', (req, res) => {
 });
 
 // 重命名分类
-app.put('/api/ingredients/category/rename', (req, res) => {
+app.put('/api/ingredients/category/rename', requireAuth, (req, res) => {
   const { oldName, newName } = req.body;
   db.prepare('UPDATE ingredients SET category=? WHERE category=?').run(newName, oldName);
   db.prepare('UPDATE extra_categories SET name=? WHERE name=?').run(newName, oldName);
@@ -177,7 +180,7 @@ app.put('/api/ingredients/category/rename', (req, res) => {
 });
 
 // 新增空分类
-app.post('/api/ingredients/category', (req, res) => {
+app.post('/api/ingredients/category', requireAuth, (req, res) => {
   const { name } = req.body;
   try {
     db.prepare('INSERT OR IGNORE INTO extra_categories (name) VALUES (?)').run(name);
