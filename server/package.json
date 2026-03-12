@@ -1,0 +1,14 @@
+{
+  "name": "recipe-app-server",
+  "version": "1.0.0",
+  "description": "家庭食谱应用后端",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "better-sqlite3": "^9.4.3",
+    "cors": "^2.8.5"
+  }
+}

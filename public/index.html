@@ -1,0 +1,1156 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>我的食谱</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&family=Noto+Sans+SC:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #faf8f3;
+    --paper: #fffef9;
+    --ink: #2c2416;
+    --ink-light: #7a6e5e;
+    --accent: #c8773a;
+    --accent-light: #f0dcc8;
+    --accent-pale: #faf0e6;
+    --border: #e8e0d0;
+    --tag-boil: #4a8fa0;
+    --tag-oven: #c85a2a;
+    --tag-air: #2a8a5a;
+    --tag-fry: #a07020;
+    --tag-other: #7a7a7a;
+    --green: #5a8a5a;
+    --green-light: #e8f0e8;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Noto Sans SC', sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    min-height: 100vh;
+  }
+
+  .app { display: flex; flex-direction: column; min-height: 100vh; }
+
+  header {
+    background: var(--paper);
+    border-bottom: 2px solid var(--ink);
+    padding: 20px 32px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .logo {
+    font-family: 'Noto Serif SC', serif;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--ink);
+    letter-spacing: 2px;
+  }
+  .logo span { color: var(--accent); }
+
+  .header-tabs { display: flex; gap: 4px; margin-left: auto; }
+
+  .tab-btn {
+    padding: 8px 18px;
+    border: 1.5px solid var(--border);
+    background: transparent;
+    border-radius: 4px;
+    font-family: 'Noto Sans SC', sans-serif;
+    font-size: 14px;
+    cursor: pointer;
+    color: var(--ink-light);
+    transition: all 0.2s;
+  }
+  .tab-btn.active { background: var(--ink); color: white; border-color: var(--ink); }
+  .tab-btn:hover:not(.active) { border-color: var(--accent); color: var(--accent); }
+
+  /* Save indicator */
+  #saveStatus {
+    font-size: 12px;
+    padding: 4px 12px;
+    border-radius: 3px;
+    transition: all 0.3s;
+    opacity: 0;
+  }
+  #saveStatus.saving { opacity: 1; color: var(--ink-light); }
+  #saveStatus.saved  { opacity: 1; color: var(--green); }
+  #saveStatus.error  { opacity: 1; color: #c05050; }
+
+  /* Loading overlay */
+  #loadingOverlay {
+    position: fixed; inset: 0;
+    background: var(--bg);
+    display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 16px;
+    z-index: 999;
+    font-size: 15px; color: var(--ink-light);
+  }
+  #loadingOverlay.hidden { display: none; }
+  .spinner {
+    width: 32px; height: 32px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  main { flex: 1; max-width: 1100px; width: 100%; margin: 0 auto; padding: 32px 24px; }
+
+  .view { display: none; }
+  .view.active { display: block; }
+
+  /* Recipe View */
+  .search-bar {
+    display: flex; gap: 12px; margin-bottom: 28px;
+    align-items: center; flex-wrap: wrap;
+  }
+  .search-bar input {
+    flex: 1; min-width: 200px;
+    padding: 10px 16px;
+    border: 1.5px solid var(--border); border-radius: 4px;
+    font-family: 'Noto Sans SC', sans-serif; font-size: 14px;
+    background: var(--paper); color: var(--ink);
+    outline: none; transition: border-color 0.2s;
+  }
+  .search-bar input:focus { border-color: var(--accent); }
+
+  .filter-row {
+    display: flex; gap: 8px; margin-bottom: 20px;
+    flex-wrap: wrap; align-items: center;
+  }
+  .filter-label { font-size: 13px; color: var(--ink-light); }
+  .filter-chip {
+    padding: 5px 14px; border: 1.5px solid var(--border);
+    border-radius: 20px; font-size: 13px; cursor: pointer;
+    background: var(--paper); transition: all 0.15s; color: var(--ink-light);
+  }
+  .filter-chip.active { background: var(--ink); color: white; border-color: var(--ink); }
+  .filter-chip:hover:not(.active) { border-color: var(--accent); color: var(--accent); }
+
+  .match-toggle {
+    margin-left: auto; display: flex; align-items: center;
+    gap: 8px; font-size: 13px; color: var(--ink-light); cursor: pointer;
+  }
+  .toggle-switch {
+    width: 36px; height: 20px; background: var(--border);
+    border-radius: 10px; position: relative; transition: background 0.2s; cursor: pointer;
+  }
+  .toggle-switch.on { background: var(--accent); }
+  .toggle-switch::after {
+    content: ''; position: absolute;
+    width: 14px; height: 14px; background: white;
+    border-radius: 50%; top: 3px; left: 3px; transition: left 0.2s;
+  }
+  .toggle-switch.on::after { left: 19px; }
+
+  .recipe-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 20px;
+  }
+  .recipe-card {
+    background: var(--paper); border: 1.5px solid var(--border);
+    border-radius: 6px; padding: 20px; cursor: pointer;
+    transition: all 0.2s; position: relative;
+  }
+  .recipe-card:hover {
+    border-color: var(--accent);
+    box-shadow: 3px 3px 0 var(--accent-light);
+    transform: translate(-1px, -1px);
+  }
+  .recipe-card.missing-some { opacity: 0.65; }
+
+  .card-method {
+    display: inline-block; font-size: 11px; font-weight: 500;
+    padding: 3px 10px; border-radius: 3px; margin-bottom: 10px; letter-spacing: 0.5px;
+  }
+  .method-boil  { background: #e0f0f5; color: var(--tag-boil); }
+  .method-oven  { background: #fce8e0; color: var(--tag-oven); }
+  .method-air   { background: #e0f5ec; color: var(--tag-air); }
+  .method-fry   { background: #faf0d0; color: var(--tag-fry); }
+  .method-other { background: #f0f0f0; color: var(--tag-other); }
+
+  .card-title {
+    font-family: 'Noto Serif SC', serif; font-size: 18px;
+    font-weight: 600; margin-bottom: 8px; line-height: 1.3;
+  }
+  .card-desc { font-size: 13px; color: var(--ink-light); line-height: 1.6; margin-bottom: 14px; }
+  .card-ingredients { display: flex; flex-wrap: wrap; gap: 5px; }
+  .ing-tag {
+    font-size: 12px; padding: 3px 9px; border-radius: 3px;
+    background: var(--accent-pale); color: var(--accent);
+    border: 1px solid var(--accent-light);
+  }
+  .ing-tag.missing {
+    background: #f5f5f5; color: #aaa; border-color: #e0e0e0;
+    text-decoration: line-through;
+  }
+  .match-badge {
+    position: absolute; top: 14px; right: 14px;
+    font-size: 11px; font-weight: 500; padding: 3px 8px;
+    border-radius: 3px; background: var(--green-light); color: var(--green);
+  }
+  .match-badge.partial { background: #fff8e0; color: #a07a00; }
+
+  .no-results { text-align: center; padding: 60px 20px; color: var(--ink-light); }
+  .no-results .emoji { font-size: 40px; display: block; margin-bottom: 16px; }
+
+  /* Modal */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.45); z-index: 200;
+    align-items: center; justify-content: center; padding: 20px;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--paper); border: 2px solid var(--ink);
+    border-radius: 8px; width: 100%; max-width: 620px;
+    max-height: 88vh; overflow-y: auto; padding: 32px; position: relative;
+  }
+  .modal-close {
+    position: absolute; top: 16px; right: 16px;
+    background: none; border: 1.5px solid var(--border); border-radius: 4px;
+    width: 32px; height: 32px; cursor: pointer; font-size: 18px;
+    color: var(--ink-light); display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s;
+  }
+  .modal-close:hover { border-color: var(--ink); color: var(--ink); }
+  .modal-method { margin-bottom: 12px; }
+  .modal-title {
+    font-family: 'Noto Serif SC', serif; font-size: 26px;
+    font-weight: 700; margin-bottom: 12px; line-height: 1.3;
+  }
+  .modal-desc {
+    font-size: 14px; color: var(--ink-light); line-height: 1.7;
+    margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px solid var(--border);
+  }
+  .modal-section-title {
+    font-family: 'Noto Serif SC', serif; font-size: 14px; font-weight: 600;
+    letter-spacing: 1px; color: var(--accent); margin-bottom: 12px;
+  }
+  .modal-ingredients { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 24px; }
+  .modal-ing {
+    font-size: 13px; padding: 5px 12px; border-radius: 4px;
+    background: var(--accent-pale); color: var(--accent);
+    border: 1px solid var(--accent-light);
+  }
+  .modal-ing.missing { background: #f5f5f5; color: #aaa; border-color: #e0e0e0; }
+  .modal-steps { margin-bottom: 24px; }
+  .step-item { display: flex; gap: 14px; margin-bottom: 14px; align-items: flex-start; }
+  .step-num {
+    width: 26px; height: 26px; min-width: 26px;
+    background: var(--ink); color: white; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 600; margin-top: 1px;
+  }
+  .step-text { font-size: 14px; line-height: 1.7; }
+  .modal-notes {
+    background: var(--accent-pale); border-left: 3px solid var(--accent);
+    padding: 12px 16px; border-radius: 0 4px 4px 0;
+    font-size: 13px; color: var(--ink-light); line-height: 1.6; margin-bottom: 20px;
+  }
+  .modal-edit-btn {
+    padding: 8px 18px; border: 1.5px solid var(--border); border-radius: 4px;
+    background: transparent; font-family: 'Noto Sans SC', sans-serif;
+    font-size: 13px; cursor: pointer; color: var(--ink-light); transition: all 0.15s;
+  }
+  .modal-edit-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .modal-save-btn {
+    padding: 8px 18px; border: none; border-radius: 4px;
+    background: var(--ink); font-family: 'Noto Sans SC', sans-serif;
+    font-size: 13px; cursor: pointer; color: white; transition: background 0.15s;
+  }
+  .modal-save-btn:hover { background: var(--accent); }
+  .modal-delete-btn {
+    padding: 8px 18px; border: 1.5px solid #e0c0c0; border-radius: 4px;
+    background: transparent; font-family: 'Noto Sans SC', sans-serif;
+    font-size: 13px; cursor: pointer; color: #c05050; transition: all 0.15s; margin-right: auto;
+  }
+  .modal-delete-btn:hover { background: #fff0f0; }
+  .modal-actions { display: flex; gap: 8px; padding-top: 8px; }
+  .edit-field {
+    width: 100%; padding: 8px 12px; border: 1.5px solid var(--border);
+    border-radius: 4px; font-family: 'Noto Sans SC', sans-serif;
+    font-size: 14px; background: var(--bg); color: var(--ink);
+    outline: none; transition: border-color 0.2s; margin-bottom: 12px;
+  }
+  .edit-field:focus { border-color: var(--accent); }
+  textarea.edit-field { resize: vertical; min-height: 80px; }
+  .edit-label { font-size: 13px; color: var(--ink-light); margin-bottom: 6px; display: block; }
+  select.edit-field { cursor: pointer; }
+
+  /* Ingredients View */
+  @media (max-width: 640px) {
+    header { padding: 14px 16px; }
+    main { padding: 20px 14px; }
+    .logo { font-size: 18px; }
+  }
+
+  .ing-check {
+    width: 18px; height: 18px; border: 1.5px solid var(--border);
+    border-radius: 3px; cursor: pointer; appearance: none; -webkit-appearance: none;
+    background: white; transition: all 0.15s; flex-shrink: 0;
+  }
+  .ing-check:checked {
+    background: var(--accent); border-color: var(--accent);
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 10 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 4l3 3 5-6' stroke='white' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-size: 10px; background-position: center; background-repeat: no-repeat;
+  }
+
+  .new-recipe-btn {
+    padding: 9px 20px; background: var(--accent); color: white;
+    border: none; border-radius: 4px; cursor: pointer;
+    font-size: 14px; font-family: 'Noto Sans SC', sans-serif; transition: opacity 0.15s;
+  }
+  .new-recipe-btn:hover { opacity: 0.85; }
+
+  .results-count { font-size: 13px; color: var(--ink-light); margin-bottom: 16px; }
+  .results-count strong { color: var(--accent); }
+
+  /* Manage View */
+  .manage-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 24px; flex-wrap: wrap; gap: 12px;
+  }
+  .manage-title { font-family: 'Noto Serif SC', serif; font-size: 20px; font-weight: 700; }
+  .manage-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 18px; align-items: start;
+  }
+  .cat-card { background: var(--paper); border: 1.5px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .cat-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 16px; background: var(--bg); border-bottom: 1px solid var(--border);
+  }
+  .cat-name-display {
+    font-family: 'Noto Serif SC', serif; font-size: 15px; font-weight: 600;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .cat-count {
+    font-size: 11px; background: var(--accent-pale); color: var(--accent);
+    padding: 2px 8px; border-radius: 10px; font-family: 'Noto Sans SC', sans-serif;
+  }
+  .cat-actions { display: flex; gap: 4px; }
+  .cat-action-btn {
+    background: none; border: 1px solid var(--border); border-radius: 3px;
+    padding: 3px 9px; cursor: pointer; font-size: 12px;
+    font-family: 'Noto Sans SC', sans-serif; display: flex;
+    align-items: center; justify-content: center;
+    color: var(--ink-light); transition: all 0.15s; white-space: nowrap;
+  }
+  .cat-action-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .cat-action-btn.danger:hover { border-color: #c05050; color: #c05050; }
+  .cat-items { padding: 8px 12px; }
+  .manage-ing-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 7px 4px; border-bottom: 1px solid var(--border); font-size: 14px;
+  }
+  .manage-ing-item:last-child { border-bottom: none; }
+  .manage-ing-name { flex: 1; }
+  .ing-del-btn {
+    background: none; border: none; cursor: pointer;
+    color: #ccc; font-size: 15px; padding: 0 4px; transition: color 0.15s; line-height: 1;
+  }
+  .ing-del-btn:hover { color: #c05050; }
+  .cat-add-row {
+    display: flex; gap: 6px; padding: 10px 12px;
+    border-top: 1px dashed var(--border); background: var(--bg);
+  }
+  .cat-add-row input {
+    flex: 1; padding: 6px 10px; border: 1.5px solid var(--border);
+    border-radius: 4px; font-family: 'Noto Sans SC', sans-serif;
+    font-size: 13px; background: var(--paper); color: var(--ink); outline: none; min-width: 0;
+  }
+  .cat-add-row input:focus { border-color: var(--accent); }
+  .cat-add-btn {
+    padding: 6px 12px; background: var(--ink); color: white;
+    border: none; border-radius: 4px; cursor: pointer;
+    font-size: 13px; white-space: nowrap; transition: background 0.15s;
+  }
+  .cat-add-btn:hover { background: var(--accent); }
+  .new-cat-row { display: flex; gap: 8px; margin-top: 18px; align-items: center; flex-wrap: wrap; }
+  .new-cat-row input {
+    padding: 8px 14px; border: 1.5px dashed var(--border); border-radius: 4px;
+    font-family: 'Noto Sans SC', sans-serif; font-size: 14px;
+    background: var(--paper); color: var(--ink); outline: none; width: 200px;
+  }
+  .new-cat-row input:focus { border-color: var(--accent); border-style: solid; }
+  .new-cat-btn {
+    padding: 8px 18px; background: transparent; color: var(--accent);
+    border: 1.5px dashed var(--accent); border-radius: 4px; cursor: pointer;
+    font-size: 14px; font-family: 'Noto Sans SC', sans-serif; transition: all 0.15s;
+  }
+  .new-cat-btn:hover { background: var(--accent-pale); }
+  /* 密码弹窗 */
+  .pw-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.5); z-index: 300;
+    align-items: center; justify-content: center;
+  }
+  .pw-overlay.open { display: flex; }
+  .pw-box {
+    background: var(--paper); border: 2px solid var(--ink);
+    border-radius: 8px; padding: 32px; width: 100%; max-width: 360px;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  .pw-title {
+    font-family: 'Noto Serif SC', serif; font-size: 18px; font-weight: 700;
+  }
+  .pw-desc { font-size: 13px; color: var(--ink-light); }
+  .pw-input {
+    width: 100%; padding: 10px 14px;
+    border: 1.5px solid var(--border); border-radius: 4px;
+    font-family: 'Noto Sans SC', sans-serif; font-size: 15px;
+    background: var(--bg); color: var(--ink); outline: none;
+    transition: border-color 0.2s; letter-spacing: 2px;
+  }
+  .pw-input:focus { border-color: var(--accent); }
+  .pw-input.error { border-color: #c05050; animation: shake 0.3s; }
+  @keyframes shake {
+    0%,100% { transform: translateX(0); }
+    25% { transform: translateX(-6px); }
+    75% { transform: translateX(6px); }
+  }
+  .pw-actions { display: flex; gap: 8px; justify-content: flex-end; }
+  .pw-cancel {
+    padding: 8px 18px; border: 1.5px solid var(--border); border-radius: 4px;
+    background: transparent; font-family: 'Noto Sans SC', sans-serif;
+    font-size: 13px; cursor: pointer; color: var(--ink-light);
+  }
+  .pw-confirm {
+    padding: 8px 18px; border: none; border-radius: 4px;
+    background: var(--ink); font-family: 'Noto Sans SC', sans-serif;
+    font-size: 13px; cursor: pointer; color: white;
+  }
+  .pw-confirm:hover { background: var(--accent); }
+
+</head>
+<body>
+<div id="loadingOverlay">
+  <div class="spinner"></div>
+  <span>加载中...</span>
+</div>
+
+<div class="app">
+  <header>
+    <div class="logo">我的<span>食谱</span></div>
+    <div class="header-tabs">
+      <button class="tab-btn active" id="tab-recipes" onclick="switchView('recipes', this)">🍽 菜谱</button>
+      <button class="tab-btn" id="tab-ingredients" onclick="switchView('ingredients', this)">🛒 食材</button>
+      <button class="tab-btn" id="tab-manage" onclick="switchView('manage', this)">≡ 编辑清单</button>
+    </div>
+    <div id="saveStatus"></div>
+  </header>
+
+  <main>
+    <div id="view-recipes" class="view active">
+      <div class="search-bar">
+        <input type="text" id="searchInput" placeholder="搜索菜名..." oninput="renderRecipes()">
+        <button class="new-recipe-btn" onclick="openNewRecipe()">＋ 新建菜谱</button>
+      </div>
+      <div class="filter-row">
+        <span class="filter-label">烹饪方式：</span>
+        <button class="filter-chip active" data-filter="all" onclick="setFilter('all')">全部</button>
+        <button class="filter-chip" data-filter="boil" onclick="setFilter('boil')">🫕 水煮</button>
+        <button class="filter-chip" data-filter="oven" onclick="setFilter('oven')">🔥 烤箱</button>
+        <button class="filter-chip" data-filter="air" onclick="setFilter('air')">💨 空气炸锅</button>
+        <button class="filter-chip" data-filter="fry" onclick="setFilter('fry')">🍳 炒菜</button>
+        <button class="filter-chip" data-filter="other" onclick="setFilter('other')">🥄 其它</button>
+        <div class="match-toggle" onclick="toggleMatchFilter()">
+          <div class="toggle-switch" id="matchToggle"></div>
+          <span>仅看我有食材的</span>
+        </div>
+      </div>
+      <div class="results-count" id="resultsCount"></div>
+      <div class="recipe-grid" id="recipeGrid"></div>
+    </div>
+
+    <div id="view-ingredients" class="view">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; flex-wrap:wrap; gap:10px;">
+        <div>
+          <div style="font-family:'Noto Serif SC',serif; font-size:20px; font-weight:700; margin-bottom:4px;">我的食材</div>
+          <div style="font-size:13px; color:var(--ink-light);">勾选你目前拥有的食材，菜谱页将自动匹配</div>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <span style="font-size:13px; color:var(--ink-light);">已拥有 <strong id="ownedCount" style="color:var(--accent)">0</strong> 种</span>
+          <button class="new-recipe-btn" style="font-size:13px; padding:7px 14px;" onclick="switchView('manage', document.getElementById('tab-manage'))">≡ 编辑清单</button>
+        </div>
+      </div>
+      <div id="ingredientsCheckList"></div>
+    </div>
+
+    <div id="view-manage" class="view">
+      <div class="manage-header">
+        <div class="manage-title">编辑食材清单</div>
+        <div style="font-size:13px; color:var(--ink-light);">管理食材分类，添加或删除食材</div>
+      </div>
+      <div class="manage-grid" id="manageGrid"></div>
+      <div class="new-cat-row">
+        <input type="text" id="newCatInput" placeholder="新分类名称..." onkeydown="if(event.key==='Enter')addCategory()">
+        <button class="new-cat-btn" onclick="addCategory()">＋ 新增分类</button>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="modal-overlay" id="modalOverlay" onclick="closeModalOnOverlay(event)">
+  <div class="modal" id="recipeModal">
+    <button class="modal-close" onclick="closeModal()">✕</button>
+    <div id="modalContent"></div>
+  </div>
+</div>
+
+<!-- 密码验证弹窗 -->
+<div class="pw-overlay" id="pwOverlay">
+  <div class="pw-box">
+    <div class="pw-title">需要密码</div>
+    <div class="pw-desc">编辑菜谱需要管理员密码</div>
+    <input type="password" class="pw-input" id="pwInput" placeholder="输入密码..." onkeydown="if(event.key==='Enter')pwConfirm()">
+    <div class="pw-actions">
+      <button class="pw-cancel" onclick="pwCancel()">取消</button>
+      <button class="pw-confirm" onclick="pwConfirm()">确认</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── 密码管理 ─────────────────────────────────────────────────────────────────
+
+// 会话内记住密码，不用每次都输
+let sessionPassword = sessionStorage.getItem('recipe_pw') || '';
+
+// 返回 Promise：resolve(密码) 或 reject(取消)
+let pwResolve = null, pwReject = null;
+
+function requirePassword() {
+  // 如果已有密码，直接用
+  if (sessionPassword) return Promise.resolve(sessionPassword);
+  // 否则弹窗
+  return new Promise((resolve, reject) => {
+    pwResolve = resolve;
+    pwReject = reject;
+    const overlay = document.getElementById('pwOverlay');
+    const input = document.getElementById('pwInput');
+    input.value = '';
+    input.classList.remove('error');
+    overlay.classList.add('open');
+    setTimeout(() => input.focus(), 50);
+  });
+}
+
+function pwConfirm() {
+  const input = document.getElementById('pwInput');
+  const pw = input.value;
+  if (!pw) return;
+  document.getElementById('pwOverlay').classList.remove('open');
+  if (pwResolve) { pwResolve(pw); pwResolve = null; pwReject = null; }
+}
+
+function pwCancel() {
+  document.getElementById('pwOverlay').classList.remove('open');
+  if (pwReject) { pwReject(new Error('cancelled')); pwResolve = null; pwReject = null; }
+}
+
+function pwWrongPassword() {
+  // 密码错误：清除记忆，提示用户
+  sessionPassword = '';
+  sessionStorage.removeItem('recipe_pw');
+  const overlay = document.getElementById('pwOverlay');
+  const input = document.getElementById('pwInput');
+  input.value = '';
+  input.classList.add('error');
+  setTimeout(() => input.classList.remove('error'), 600);
+  overlay.classList.add('open');
+  setTimeout(() => input.focus(), 50);
+  // 重新等待用户输入
+  return new Promise((resolve, reject) => {
+    pwResolve = resolve;
+    pwReject = reject;
+  });
+}
+
+// ─── API ──────────────────────────────────────────────────────────────────────
+
+async function api(method, path, body) {
+  const opts = {
+    method,
+    headers: { 'Content-Type': 'application/json' }
+  };
+  if (body !== undefined) opts.body = JSON.stringify(body);
+  const res = await fetch('/api' + path, opts);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+// 需要密码的 API 调用，自动处理弹窗和重试
+async function apiAuth(method, path, body) {
+  let pw;
+  try {
+    pw = await requirePassword();
+  } catch(e) {
+    throw new Error('cancelled');
+  }
+
+  const opts = {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      'x-recipe-password': pw
+    }
+  };
+  if (body !== undefined) opts.body = JSON.stringify(body);
+  const res = await fetch('/api' + path, opts);
+
+  if (res.status === 401) {
+    // 密码错误，重试
+    try {
+      pw = await pwWrongPassword();
+    } catch(e) {
+      throw new Error('cancelled');
+    }
+    // 用新密码再试一次
+    const opts2 = {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        'x-recipe-password': pw
+      }
+    };
+    if (body !== undefined) opts2.body = JSON.stringify(body);
+    const res2 = await fetch('/api' + path, opts2);
+    if (res2.status === 401) {
+      sessionPassword = '';
+      sessionStorage.removeItem('recipe_pw');
+      throw new Error('密码错误');
+    }
+    // 密码正确，记住它
+    sessionPassword = pw;
+    sessionStorage.setItem('recipe_pw', pw);
+    if (!res2.ok) throw new Error(await res2.text());
+    return res2.json();
+  }
+
+  // 密码正确，记住它
+  sessionPassword = pw;
+  sessionStorage.setItem('recipe_pw', pw);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+function showStatus(type, text) {
+  const el = document.getElementById('saveStatus');
+  el.className = type;
+  el.textContent = text;
+  if (type === 'saved') setTimeout(() => { el.style.opacity = 0; }, 2000);
+}
+
+// ─── STATE ────────────────────────────────────────────────────────────────────
+
+let state = {
+  ingredients: [],
+  extraCategories: [],
+  recipes: [],
+  filter: 'all',
+  matchOwned: false,
+};
+
+async function loadAll() {
+  const [recipesData, ingsData] = await Promise.all([
+    api('GET', '/recipes'),
+    api('GET', '/ingredients')
+  ]);
+  state.recipes = recipesData;
+  state.ingredients = ingsData.ingredients;
+  state.extraCategories = ingsData.extraCategories;
+}
+
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
+
+function getOwnedNames() {
+  return new Set(state.ingredients.filter(i => i.owned).map(i => i.name));
+}
+
+function getMatchInfo(recipe) {
+  const owned = getOwnedNames();
+  const total = recipe.ingredients.length;
+  const have = recipe.ingredients.filter(i => owned.has(i)).length;
+  return { have, total, full: have === total };
+}
+
+function methodLabel(m) {
+  if (m === 'boil')  return { text: '🫕 水煮',    cls: 'method-boil' };
+  if (m === 'oven')  return { text: '🔥 烤箱',    cls: 'method-oven' };
+  if (m === 'air')   return { text: '💨 空气炸锅', cls: 'method-air'  };
+  if (m === 'fry')   return { text: '🍳 炒菜',    cls: 'method-fry'  };
+  return { text: '🥄 其它', cls: 'method-other' };
+}
+
+function escHtml(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ─── VIEWS ────────────────────────────────────────────────────────────────────
+
+function switchView(view, btn) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('view-' + view).classList.add('active');
+  if (btn) btn.classList.add('active');
+  if (view === 'ingredients') renderIngredients();
+  if (view === 'manage') renderManage();
+}
+
+function setFilter(f) {
+  state.filter = f;
+  document.querySelectorAll('.filter-chip').forEach(c => {
+    c.classList.toggle('active', c.dataset.filter === f);
+  });
+  renderRecipes();
+}
+
+function toggleMatchFilter() {
+  state.matchOwned = !state.matchOwned;
+  document.getElementById('matchToggle').classList.toggle('on', state.matchOwned);
+  renderRecipes();
+}
+
+// ─── RECIPES ─────────────────────────────────────────────────────────────────
+
+function renderRecipes() {
+  const query = document.getElementById('searchInput').value.trim().toLowerCase();
+  const owned = getOwnedNames();
+
+  let filtered = state.recipes.filter(r => {
+    if (state.filter !== 'all' && r.method !== state.filter) return false;
+    if (query && !r.title.includes(query) && !r.ingredients.join('').includes(query)) return false;
+    if (state.matchOwned) return getMatchInfo(r).full;
+    return true;
+  });
+
+  filtered.sort((a, b) => {
+    const am = getMatchInfo(a), bm = getMatchInfo(b);
+    if (am.full && !bm.full) return -1;
+    if (!am.full && bm.full) return 1;
+    return (bm.have / (bm.total||1)) - (am.have / (am.total||1));
+  });
+
+  document.getElementById('resultsCount').innerHTML =
+    `共 <strong>${filtered.length}</strong> 个菜谱` +
+    (state.matchOwned ? `（仅显示食材齐全的）` : '');
+
+  const grid = document.getElementById('recipeGrid');
+  if (filtered.length === 0) {
+    grid.innerHTML = `<div class="no-results" style="grid-column:1/-1">
+      <span class="emoji">🥣</span>没有找到匹配的菜谱<br>
+      <span style="font-size:13px">试试调整筛选条件，或新建一个菜谱</span></div>`;
+    return;
+  }
+
+  grid.innerHTML = filtered.map(r => {
+    const ml = methodLabel(r.method);
+    const { have, total, full } = getMatchInfo(r);
+    const badge = full
+      ? `<div class="match-badge">✓ 食材齐全</div>`
+      : have > 0 ? `<div class="match-badge partial">拥有 ${have}/${total}</div>` : '';
+    const ings = r.ingredients.map(i =>
+      `<span class="ing-tag ${owned.has(i) ? '' : 'missing'}">${escHtml(i)}</span>`
+    ).join('');
+    return `<div class="recipe-card ${full ? '' : 'missing-some'}" onclick="openRecipe(${r.id})">
+      ${badge}
+      <div class="card-method ${ml.cls}">${ml.text}</div>
+      <div class="card-title">${escHtml(r.title)}</div>
+      <div class="card-desc">${escHtml(r.desc)}</div>
+      <div class="card-ingredients">${ings}</div>
+    </div>`;
+  }).join('');
+}
+
+// ─── RECIPE MODAL ─────────────────────────────────────────────────────────────
+
+function openRecipe(id) {
+  const r = state.recipes.find(x => x.id === id);
+  if (!r) return;
+  renderModal(r, false);
+  document.getElementById('modalOverlay').classList.add('open');
+}
+
+async function openNewRecipe() {
+  showStatus('saving', '创建中...');
+  try {
+    const { id } = await apiAuth('POST', '/recipes', {
+      title: '新菜谱', method: 'boil', desc: '', ingredients: [], steps: [], notes: ''
+    });
+    const newR = { id, title: '新菜谱', method: 'boil', desc: '', ingredients: [], steps: [], notes: '' };
+    state.recipes.push(newR);
+    showStatus('saved', '已保存');
+    renderModal(newR, true);
+    document.getElementById('modalOverlay').classList.add('open');
+    renderRecipes();
+  } catch(e) {
+    if (e.message !== 'cancelled') showStatus('error', '创建失败');
+    else showStatus('', '');
+  }
+}
+
+function renderModal(r, editMode) {
+  const owned = getOwnedNames();
+  const ml = methodLabel(r.method);
+
+  if (editMode) {
+    document.getElementById('modalContent').innerHTML = `
+      <label class="edit-label">菜名</label>
+      <input class="edit-field" id="edit-title" value="${escHtml(r.title)}">
+      <label class="edit-label">烹饪方式</label>
+      <select class="edit-field" id="edit-method">
+        <option value="boil"  ${r.method==='boil' ?'selected':''}>🫕 水煮</option>
+        <option value="oven"  ${r.method==='oven' ?'selected':''}>🔥 烤箱</option>
+        <option value="air"   ${r.method==='air'  ?'selected':''}>💨 空气炸锅</option>
+        <option value="fry"   ${r.method==='fry'  ?'selected':''}>🍳 炒菜</option>
+        <option value="other" ${r.method==='other'?'selected':''}>🥄 其它</option>
+      </select>
+      <label class="edit-label">简介</label>
+      <textarea class="edit-field" id="edit-desc">${escHtml(r.desc)}</textarea>
+      <label class="edit-label">食材（每行一个）</label>
+      <textarea class="edit-field" id="edit-ingredients" style="min-height:100px">${r.ingredients.join('\n')}</textarea>
+      <label class="edit-label">步骤（每行一步）</label>
+      <textarea class="edit-field" id="edit-steps" style="min-height:120px">${r.steps.join('\n')}</textarea>
+      <label class="edit-label">小贴士（可选）</label>
+      <textarea class="edit-field" id="edit-notes">${escHtml(r.notes||'')}</textarea>
+      <div class="modal-actions">
+        <button class="modal-delete-btn" data-action="delete-recipe" data-id="${r.id}">删除</button>
+        <button class="modal-edit-btn" onclick="renderModal(state.recipes.find(x=>x.id===${r.id}), false)">取消</button>
+        <button class="modal-save-btn" onclick="saveRecipe(${r.id})">保存</button>
+      </div>`;
+  } else {
+    const steps = (r.steps||[]).map((s,i) =>
+      `<div class="step-item"><div class="step-num">${i+1}</div><div class="step-text">${escHtml(s)}</div></div>`
+    ).join('');
+    const ings = (r.ingredients||[]).map(i =>
+      `<span class="modal-ing ${owned.has(i)?'':'missing'}">${escHtml(i)}</span>`
+    ).join('');
+    const notes = r.notes ? `<div class="modal-notes">💡 ${escHtml(r.notes)}</div>` : '';
+    document.getElementById('modalContent').innerHTML = `
+      <div class="modal-method"><span class="card-method ${ml.cls}">${ml.text}</span></div>
+      <div class="modal-title">${escHtml(r.title)}</div>
+      <div class="modal-desc">${escHtml(r.desc)}</div>
+      <div class="modal-section-title">食材</div>
+      <div class="modal-ingredients">${ings}</div>
+      <div class="modal-section-title">步骤</div>
+      <div class="modal-steps">${steps}</div>
+      ${notes}
+      <div class="modal-actions">
+        <button class="modal-delete-btn" data-action="delete-recipe" data-id="${r.id}">删除</button>
+        <button class="modal-edit-btn" onclick="renderModal(state.recipes.find(x=>x.id===${r.id}), true)">编辑</button>
+      </div>`;
+  }
+}
+
+async function saveRecipe(id) {
+  const r = state.recipes.find(x => x.id === id);
+  const updated = {
+    title: document.getElementById('edit-title').value.trim() || '未命名菜谱',
+    method: document.getElementById('edit-method').value,
+    desc: document.getElementById('edit-desc').value.trim(),
+    ingredients: document.getElementById('edit-ingredients').value.split('\n').map(s=>s.trim()).filter(Boolean),
+    steps: document.getElementById('edit-steps').value.split('\n').map(s=>s.trim()).filter(Boolean),
+    notes: document.getElementById('edit-notes').value.trim(),
+  };
+  showStatus('saving', '保存中...');
+  try {
+    await apiAuth('PUT', `/recipes/${id}`, updated);
+    Object.assign(r, updated);
+    showStatus('saved', '已保存');
+    renderModal(r, false);
+    renderRecipes();
+  } catch(e) {
+    if (e.message !== 'cancelled') showStatus('error', '保存失败');
+    else showStatus('', '');
+  }
+}
+
+async function deleteRecipe(id) {
+  showStatus('saving', '删除中...');
+  try {
+    await apiAuth('DELETE', `/recipes/${id}`);
+    state.recipes = state.recipes.filter(r => r.id !== id);
+    showStatus('saved', '已删除');
+    closeModal();
+    renderRecipes();
+  } catch(e) {
+    if (e.message !== 'cancelled') showStatus('error', '删除失败');
+    else showStatus('', '');
+  }
+}
+
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('open');
+}
+function closeModalOnOverlay(e) {
+  if (e.target === document.getElementById('modalOverlay')) closeModal();
+}
+
+// ─── INGREDIENTS ─────────────────────────────────────────────────────────────
+
+function renderIngredients() {
+  const categories = [...new Set(state.ingredients.map(i => i.category))];
+  const owned = state.ingredients.filter(i => i.owned);
+  document.getElementById('ownedCount').textContent = owned.length;
+
+  let html = '';
+  categories.forEach(cat => {
+    const items = state.ingredients.filter(i => i.category === cat);
+    html += `<div style="margin-bottom:20px;">
+      <div style="font-family:'Noto Serif SC',serif; font-size:14px; font-weight:600; color:var(--accent); letter-spacing:1px; margin-bottom:10px; padding-bottom:6px; border-bottom:1px solid var(--border);">${escHtml(cat)}</div>
+      <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:6px;">
+        ${items.map(ing => `
+          <label style="display:flex; align-items:center; gap:8px; padding:8px 10px; background:var(--paper); border:1.5px solid ${ing.owned ? 'var(--accent-light)' : 'var(--border)'}; border-radius:5px; cursor:pointer; transition:border-color 0.15s;">
+            <input type="checkbox" class="ing-check" ${ing.owned ? 'checked' : ''} data-action="toggle-owned" data-name="${escHtml(ing.name)}" style="flex-shrink:0;">
+            <span style="font-size:14px;">${escHtml(ing.name)}</span>
+          </label>`).join('')}
+      </div>
+    </div>`;
+  });
+  document.getElementById('ingredientsCheckList').innerHTML = html;
+}
+
+// Debounce owned updates to batch them
+let ownedDebounceTimer = null;
+let pendingOwnedUpdates = {};
+
+function toggleOwned(name, checked) {
+  const ing = state.ingredients.find(i => i.name === name);
+  if (!ing) return;
+  ing.owned = checked;
+  renderIngredients();
+  renderRecipes();
+
+  pendingOwnedUpdates[name] = checked;
+  clearTimeout(ownedDebounceTimer);
+  showStatus('saving', '保存中...');
+  ownedDebounceTimer = setTimeout(async () => {
+    const updates = Object.entries(pendingOwnedUpdates).map(([name, owned]) => ({ name, owned }));
+    pendingOwnedUpdates = {};
+    try {
+      await api('PUT', '/ingredients/owned', { updates });
+      showStatus('saved', '已保存');
+    } catch(e) { showStatus('error', '保存失败'); }
+  }, 800);
+}
+
+// ─── MANAGE ──────────────────────────────────────────────────────────────────
+
+function renderManage() {
+  const usedCats = [...new Set(state.ingredients.map(i => i.category))];
+  const extra = (state.extraCategories || []).filter(c => !usedCats.includes(c));
+  const categories = [...usedCats, ...extra];
+
+  document.getElementById('manageGrid').innerHTML = categories.map(cat => {
+    const items = state.ingredients.filter(i => i.category === cat);
+    const itemsHtml = items.map(ing => `
+      <div class="manage-ing-item">
+        <span class="manage-ing-name">${escHtml(ing.name)}</span>
+        <button class="ing-del-btn" data-action="del-ing" data-name="${escHtml(ing.name)}" title="删除">✕</button>
+      </div>`).join('');
+    return `<div class="cat-card">
+      <div class="cat-header">
+        <div class="cat-name-display" data-label-cat="${escHtml(cat)}">
+          ${escHtml(cat)} <span class="cat-count">${items.length}</span>
+        </div>
+        <div class="cat-actions">
+          <button class="cat-action-btn" data-action="rename-cat" data-cat="${escHtml(cat)}">改名</button>
+          <button class="cat-action-btn danger" data-action="del-cat" data-cat="${escHtml(cat)}">删除</button>
+        </div>
+      </div>
+      <div class="cat-items">${itemsHtml || '<div style="font-size:13px;color:var(--ink-light);padding:8px 4px;">暂无食材</div>'}</div>
+      <div class="cat-add-row">
+        <input type="text" placeholder="添加食材..." class="cat-ing-input" data-cat="${escHtml(cat)}">
+        <button class="cat-add-btn" data-action="add-ing" data-cat="${escHtml(cat)}">添加</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function addCategory() {
+  const input = document.getElementById('newCatInput');
+  const name = input.value.trim();
+  if (!name) return;
+  const allCats = [...new Set(state.ingredients.map(i => i.category)), ...(state.extraCategories || [])];
+  if (allCats.includes(name)) { showStatus('error', '分类已存在'); return; }
+  showStatus('saving', '保存中...');
+  try {
+    await api('POST', '/ingredients/category', { name });
+    if (!state.extraCategories) state.extraCategories = [];
+    state.extraCategories.push(name);
+    input.value = '';
+    showStatus('saved', '已保存');
+    renderManage();
+  } catch(e) { showStatus('error', '添加失败'); }
+}
+
+// ─── EVENT DELEGATION ─────────────────────────────────────────────────────────
+
+document.addEventListener('click', async function(e) {
+  const btn = e.target.closest('[data-action]');
+  if (!btn) return;
+  const action = btn.dataset.action;
+
+  if (action === 'toggle-owned') {
+    // handled by change event below
+    return;
+  }
+
+  if (action === 'delete-recipe') {
+    const id = parseInt(btn.dataset.id);
+    if (btn.dataset.confirming) {
+      await deleteRecipe(id);
+    } else {
+      btn.dataset.confirming = '1';
+      btn.textContent = '确认删除';
+      btn.style.cssText = 'background:#c05050;color:white;border:none;border-radius:3px;padding:4px 12px;cursor:pointer;font-size:13px;margin-right:auto;';
+      setTimeout(() => {
+        if (btn.dataset.confirming) {
+          btn.dataset.confirming = '';
+          btn.textContent = '删除';
+          btn.style.cssText = '';
+        }
+      }, 3000);
+    }
+  }
+
+  if (action === 'del-ing') {
+    const name = btn.dataset.name;
+    if (btn.dataset.confirming) {
+      showStatus('saving', '删除中...');
+      try {
+        await api('DELETE', `/ingredients/${encodeURIComponent(name)}`);
+        state.ingredients = state.ingredients.filter(i => i.name !== name);
+        showStatus('saved', '已删除');
+        renderManage(); renderIngredients(); renderRecipes();
+      } catch(e) { showStatus('error', '删除失败'); }
+    } else {
+      btn.dataset.confirming = '1';
+      btn.textContent = '确认';
+      btn.style.cssText = 'background:#c05050;color:white;border:none;border-radius:3px;padding:2px 8px;cursor:pointer;font-size:12px;';
+      setTimeout(() => {
+        if (btn.dataset.confirming) { btn.dataset.confirming = ''; btn.textContent = '✕'; btn.style.cssText = ''; }
+      }, 3000);
+    }
+  }
+
+  if (action === 'add-ing') {
+    const cat = btn.dataset.cat;
+    const input = btn.closest('.cat-add-row').querySelector('.cat-ing-input');
+    const name = input.value.trim();
+    if (!name) return;
+    if (state.ingredients.find(i => i.name === name)) {
+      input.style.borderColor = '#c05050';
+      setTimeout(() => input.style.borderColor = '', 1500);
+      return;
+    }
+    showStatus('saving', '保存中...');
+    try {
+      await api('POST', '/ingredients', { name, category: cat, owned: false });
+      state.ingredients.push({ name, category: cat, owned: false });
+      input.value = '';
+      showStatus('saved', '已保存');
+      renderManage(); renderRecipes();
+    } catch(e) { showStatus('error', '添加失败'); }
+  }
+
+  if (action === 'del-cat') {
+    const cat = btn.dataset.cat;
+    if (btn.dataset.confirming) {
+      showStatus('saving', '删除中...');
+      try {
+        await api('DELETE', `/ingredients/category/${encodeURIComponent(cat)}`);
+        state.ingredients = state.ingredients.filter(i => i.category !== cat);
+        state.extraCategories = (state.extraCategories || []).filter(c => c !== cat);
+        showStatus('saved', '已删除');
+        renderManage(); renderIngredients(); renderRecipes();
+      } catch(e) { showStatus('error', '删除失败'); }
+    } else {
+      btn.dataset.confirming = '1';
+      btn.textContent = '确认删除分类';
+      btn.style.cssText = 'background:#c05050;color:white;border:none;border-radius:3px;padding:3px 8px;cursor:pointer;font-size:12px;';
+      setTimeout(() => {
+        if (btn.dataset.confirming) { btn.dataset.confirming = ''; btn.textContent = '删除'; btn.style.cssText = ''; }
+      }, 3000);
+    }
+  }
+
+  if (action === 'rename-cat') {
+    const cat = btn.dataset.cat;
+    const allLabels = document.querySelectorAll('[data-label-cat]');
+    let targetLabel = null;
+    allLabels.forEach(el => { if (el.dataset.labelCat === cat) targetLabel = el; });
+    if (!targetLabel) return;
+    targetLabel.innerHTML = `<input class="cat-rename-input" data-rename-for="${escHtml(cat)}" value="${escHtml(cat)}">`;
+    const inp = targetLabel.querySelector('input');
+    inp.focus(); inp.select();
+    inp.addEventListener('keydown', ev => {
+      if (ev.key === 'Enter') { ev.preventDefault(); finishRenameCategory(inp); }
+      if (ev.key === 'Escape') renderManage();
+    });
+    inp.addEventListener('blur', () => finishRenameCategory(inp));
+  }
+});
+
+// Checkbox change via delegation
+document.addEventListener('change', function(e) {
+  const el = e.target;
+  if (el.dataset.action === 'toggle-owned') {
+    toggleOwned(el.dataset.name, el.checked);
+  }
+});
+
+// Enter key in cat-ing-input
+document.addEventListener('keydown', function(e) {
+  if (e.key !== 'Enter' || !e.target.classList.contains('cat-ing-input')) return;
+  const fakeBtn = { dataset: { cat: e.target.dataset.cat }, closest: () => e.target.closest('.cat-add-row') };
+  e.target.closest('.cat-add-row').querySelector('.cat-add-btn').click();
+});
+
+async function finishRenameCategory(inp) {
+  const oldCat = inp.dataset.renameFor;
+  const newCat = inp.value.trim();
+  if (!oldCat) return;
+  inp.dataset.renameFor = '';
+  if (!newCat || newCat === oldCat) { renderManage(); return; }
+  showStatus('saving', '保存中...');
+  try {
+    await api('PUT', '/ingredients/category/rename', { oldName: oldCat, newName: newCat });
+    state.ingredients.forEach(i => { if (i.category === oldCat) i.category = newCat; });
+    state.extraCategories = (state.extraCategories || []).map(c => c === oldCat ? newCat : c);
+    showStatus('saved', '已保存');
+    renderManage();
+  } catch(e) { showStatus('error', '重命名失败'); renderManage(); }
+}
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+
+(async () => {
+  try {
+    await loadAll();
+    document.getElementById('loadingOverlay').classList.add('hidden');
+    renderRecipes();
+  } catch(e) {
+    document.getElementById('loadingOverlay').innerHTML =
+      `<div style="color:#c05050; text-align:center; padding:40px">
+        <div style="font-size:32px; margin-bottom:16px">⚠️</div>
+        <div style="font-size:16px; font-weight:600; margin-bottom:8px">无法连接到服务器</div>
+        <div style="font-size:13px; color:#999">请确认后端服务已启动</div>
+      </div>`;
+  }
+})();
+</script>
+</body>
+</html>

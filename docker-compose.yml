@@ -1,0 +1,11 @@
+services:
+  recipe-app:
+    build: .
+    container_name: recipe-app
+    ports:
+      - "3000:3000"       # 改成你想要的端口，如 "8080:3000"
+    volumes:
+      - ./data:/data      # 数据库文件持久化到本地 ./data 目录
+    environment:
+      - RECIPE_PASSWORD=你的密码请修改这里   # ← 改成你自己的密码
+    restart: unless-stopped
