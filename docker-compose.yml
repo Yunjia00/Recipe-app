@@ -7,5 +7,12 @@ services:
     volumes:
       - ./data:/data      # 数据库文件持久化到本地 ./data 目录
     environment:
-      - RECIPE_PASSWORD=你的密码请修改这里   # ← 改成你自己的密码
+      - RECIPE_PASSWORD=suibianshenme # ← 改成你自己的密码
     restart: unless-stopped
+
+    networks:
+      - homelab
+
+networks:
+  homelab:
+    external: true
