@@ -4,19 +4,13 @@ import sqlite3
 from pathlib import Path
 from time import time_ns
 from pydantic import BaseModel
-
-
 from dotenv import load_dotenv
-load_dotenv()
-
 from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.staticfiles import StaticFiles
 
-
-id = time_ns() 
+load_dotenv()
 
 app = FastAPI()
-
 
 ## Configurations
 PORT = int(os.getenv("PORT", 3000))
@@ -72,10 +66,9 @@ def init_db():
         conn.commit()
 
     conn.close()
-
+    
+# Initialize
 init_db()
-
-
 
 # Help Function
 def parse_recipe(row):
