@@ -1,86 +1,60 @@
-# 我的食谱 — 部署说明
+[中文](README.md) | [English](README.en.md)
 
-## 文件结构
+# 我的食谱
 
+一个为家庭日常使用设计的轻量食谱应用。它把菜谱、食材清单和“我现在家里有什么”这三件事放到同一个界面里，方便快速决定今天做什么。
+
+项目采用 FastAPI + SQLite，前端为单页静态 HTML，适合个人部署，也适合作为简单的全栈练习项目。
+
+![应用截图](documents/screenshots.png)
+
+## 功能
+
+- 浏览、搜索和筛选菜谱
+- 按烹饪方式查看菜谱
+- 勾选当前已有食材，自动匹配可做的菜
+- 新增、编辑、删除菜谱
+- 管理食材、分类和额外分类
+
+## 技术栈
+
+- FastAPI
+- SQLite
+- 原生 HTML / CSS / JavaScript
+- Docker / Docker Compose
+
+## 快速开始
+
+要求：Python 3.12+
+
+使用 uv：
+
+```bash
+uv sync
+uv run uvicorn server.main:app --reload --host 0.0.0.0 --port 3000
 ```
-recipe-app/
-├── docker-compose.yml     ← 启动配置
+
+启动后访问：<http://localhost:3000>
+
+## 项目结构
+
+```text
+.
+├── documents/           # 截图与补充文档
+├── public/              # 前端静态页面
+├── server/              # FastAPI 后端
+├── data/                # SQLite 数据文件
 ├── Dockerfile
-├── data/                  ← 数据库自动生成在这里（自动创建）
-├── public/
-│   └── index.html         ← 前端页面
-└── server/
-    ├── index.js           ← 后端服务
-    ├── package.json
-    └── defaults.json      ← 预设菜谱和食材数据
+├── docker-compose.yml
+└── pyproject.toml
 ```
 
----
+## 部署
 
-## 部署步骤
+部署方式、环境变量、Docker 注意事项见 [documents/DEPLOYMENT.md](documents/DEPLOYMENT.md)。
 
-### 1. 安装 Docker（如果还没装）
+## 数据
 
-```bash
-curl -fsSL https://get.docker.com | sh
-```
-
-### 2. 把整个 recipe-app 文件夹传到服务器
-
-可以用 scp：
-```bash
-scp -r recipe-app/ 你的用户名@服务器IP:/home/你的用户名/
-```
-
-### 3. 在服务器上启动
-
-```bash
-cd recipe-app
-docker compose up -d
-```
-
-就这样！访问 `http://服务器IP:3000` 即可使用。
-
----
-
-## 常用命令
-
-```bash
-# 查看运行状态
-docker compose ps
-
-# 查看日志
-docker compose logs -f
-
-# 停止
-docker compose down
-
-# 更新代码后重新构建
-docker compose up -d --build
-```
-
----
-
-## 数据备份
-
-所有数据存在 `./data/recipes.db`（SQLite 文件）。
-
-备份只需复制这个文件：
-```bash
-cp data/recipes.db data/recipes_backup_$(date +%Y%m%d).db
-```
-
-恢复：替换 `data/recipes.db` 后重启容器即可。
-
----
-
-## 修改端口
-
-编辑 `docker-compose.yml`，把 `"3000:3000"` 左边的数字改成你想要的端口：
-
-```yaml
-ports:
-  - "8080:3000"   # 改成通过 8080 访问
-```
-
-然后重启：`docker compose up -d`
+- 默认数据库文件是 data/recipes.db
+- 首次启动时会导入 server/defaults.json 中的预设数据
+- 编辑操作通过请求头中的密码保护

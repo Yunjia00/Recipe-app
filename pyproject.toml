@@ -1,7 +1,7 @@
 [project]
 name = "recipe-app"
 version = "0.1.0"
-description = "Add your description here"
+description = "A personal recipe app built with FastAPI, SQLite, and a static HTML frontend"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
