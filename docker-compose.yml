@@ -3,11 +3,11 @@ services:
     build: .
     container_name: recipe-app
     ports:
-      - "3000:3000"       # 改成你想要的端口，如 "8080:3000"
+      - "3000:3000" # 改成你想要的端口，如 "8080:3000"
     volumes:
-      - ./data:/data      # 数据库文件持久化到本地 ./data 目录
+      - ./data:/data # 数据库文件持久化到本地 ./data 目录
     environment:
-      - RECIPE_PASSWORD=suibianshenme # ← 改成你自己的密码
+      - RECIPE_PASSWORD=${RECIPE_PASSWORD} # ← 改成你自己的密码
     restart: unless-stopped
 
     networks:
