@@ -1,104 +1,216 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>喵王的食谱</title>
-<link rel="icon" type="image/svg+xml" href="favicon.svg">
-<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&family=Noto+Sans+SC:wght@300;400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css">
-
-</head>
-<body>
-<div id="loadingOverlay">
-  <div class="spinner"></div>
-  <span>加载中...</span>
-</div>
-
-<div class="app">
-  <header>
-    <div class="logo">🐱 喵王的<span>食谱</span></div>
-    <div class="header-tabs">
-      <button class="tab-btn active" id="tab-recipes" onclick="switchView('recipes', this)">🍽 菜谱</button>
-      <button class="tab-btn" id="tab-ingredients" onclick="switchView('ingredients', this)">🛒 食材</button>
-      <button class="tab-btn" id="tab-manage" onclick="switchView('manage', this)">≡ 编辑清单</button>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>喵王的食谱</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&family=Noto+Sans+SC:wght@300;400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div id="loadingOverlay">
+      <div class="spinner"></div>
+      <span>加载中...</span>
     </div>
-    <div id="saveStatus"></div>
-  </header>
 
-  <main>
-    <div id="view-recipes" class="view active">
-      <div class="search-bar">
-        <input type="text" id="searchInput" placeholder="搜索菜名..." oninput="renderRecipes()">
-        <button class="new-recipe-btn" onclick="openNewRecipe()">＋ 新建菜谱</button>
+    <div class="app">
+      <header>
+        <div class="logo">🐱 喵王的<span>食谱</span></div>
+        <div class="header-tabs">
+          <button
+            class="tab-btn active"
+            id="tab-recipes"
+            onclick="switchView('recipes', this)"
+          >
+            🍽 菜谱
+          </button>
+          <button
+            class="tab-btn"
+            id="tab-ingredients"
+            onclick="switchView('ingredients', this)"
+          >
+            🛒 食材
+          </button>
+          <button
+            class="tab-btn"
+            id="tab-manage"
+            onclick="switchView('manage', this)"
+          >
+            ≡ 编辑清单
+          </button>
+        </div>
+        <div id="saveStatus"></div>
+      </header>
+
+      <main>
+        <div id="view-recipes" class="view active">
+          <div class="search-bar">
+            <input
+              type="text"
+              id="searchInput"
+              placeholder="搜索菜名..."
+              oninput="renderRecipes()"
+            />
+            <button class="new-recipe-btn" onclick="openNewRecipe()">
+              ＋ 新建菜谱
+            </button>
+          </div>
+          <div class="filter-row">
+            <span class="filter-label">烹饪方式：</span>
+            <button
+              class="filter-chip active"
+              data-filter="all"
+              onclick="setFilter('all')"
+            >
+              全部
+            </button>
+            <button
+              class="filter-chip"
+              data-filter="boil"
+              onclick="setFilter('boil')"
+            >
+              🫕 水煮
+            </button>
+            <button
+              class="filter-chip"
+              data-filter="oven"
+              onclick="setFilter('oven')"
+            >
+              🔥 烤箱
+            </button>
+            <button
+              class="filter-chip"
+              data-filter="air"
+              onclick="setFilter('air')"
+            >
+              💨 空气炸锅
+            </button>
+            <button
+              class="filter-chip"
+              data-filter="fry"
+              onclick="setFilter('fry')"
+            >
+              🍳 炒菜
+            </button>
+            <button
+              class="filter-chip"
+              data-filter="other"
+              onclick="setFilter('other')"
+            >
+              🥄 其它
+            </button>
+            <div class="match-toggle" onclick="toggleMatchFilter()">
+              <div class="toggle-switch" id="matchToggle"></div>
+              <span>仅看我有必要食材的</span>
+            </div>
+          </div>
+          <div class="results-count" id="resultsCount"></div>
+          <div class="recipe-grid" id="recipeGrid"></div>
+        </div>
+
+        <div id="view-ingredients" class="view">
+          <div
+            style="
+              display: flex;
+              align-items: center;
+              justify-content: space-between;
+              margin-bottom: 20px;
+              flex-wrap: wrap;
+              gap: 10px;
+            "
+          >
+            <div>
+              <div
+                style="
+                  font-family: &quot;Noto Serif SC&quot;, serif;
+                  font-size: 20px;
+                  font-weight: 700;
+                  margin-bottom: 4px;
+                "
+              >
+                我的食材
+              </div>
+              <div style="font-size: 13px; color: var(--ink-light)">
+                勾选你目前拥有的食材，菜谱页将自动匹配
+              </div>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center">
+              <span style="font-size: 13px; color: var(--ink-light)"
+                >已拥有
+                <strong id="ownedCount" style="color: var(--accent)">0</strong>
+                种</span
+              >
+              <button
+                class="new-recipe-btn"
+                style="font-size: 13px; padding: 7px 14px"
+                onclick="
+                  switchView('manage', document.getElementById('tab-manage'))
+                "
+              >
+                ≡ 编辑清单
+              </button>
+            </div>
+          </div>
+          <div id="ingredientsCheckList"></div>
+        </div>
+
+        <div id="view-manage" class="view">
+          <div class="manage-header">
+            <div class="manage-title">编辑食材清单</div>
+            <div style="font-size: 13px; color: var(--ink-light)">
+              管理食材分类，添加或删除食材
+            </div>
+          </div>
+          <div class="manage-grid" id="manageGrid"></div>
+          <div class="new-cat-row">
+            <input
+              type="text"
+              id="newCatInput"
+              placeholder="新分类名称..."
+              onkeydown="if (event.key === 'Enter') addCategory();"
+            />
+            <button class="new-cat-btn" onclick="addCategory()">
+              ＋ 新增分类
+            </button>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <div
+      class="modal-overlay"
+      id="modalOverlay"
+      onclick="closeModalOnOverlay(event)"
+    >
+      <div class="modal" id="recipeModal">
+        <button class="modal-close" onclick="closeModal()">✕</button>
+        <div id="modalContent"></div>
       </div>
-      <div class="filter-row">
-        <span class="filter-label">烹饪方式：</span>
-        <button class="filter-chip active" data-filter="all" onclick="setFilter('all')">全部</button>
-        <button class="filter-chip" data-filter="boil" onclick="setFilter('boil')">🫕 水煮</button>
-        <button class="filter-chip" data-filter="oven" onclick="setFilter('oven')">🔥 烤箱</button>
-        <button class="filter-chip" data-filter="air" onclick="setFilter('air')">💨 空气炸锅</button>
-        <button class="filter-chip" data-filter="fry" onclick="setFilter('fry')">🍳 炒菜</button>
-        <button class="filter-chip" data-filter="other" onclick="setFilter('other')">🥄 其它</button>
-        <div class="match-toggle" onclick="toggleMatchFilter()">
-          <div class="toggle-switch" id="matchToggle"></div>
-          <span>仅看我有食材的</span>
+    </div>
+
+    <!-- 密码验证弹窗 -->
+    <div class="pw-overlay" id="pwOverlay">
+      <div class="pw-box">
+        <div class="pw-title">需要密码</div>
+        <div class="pw-desc">编辑菜谱需要管理员密码</div>
+        <input
+          type="password"
+          class="pw-input"
+          id="pwInput"
+          placeholder="输入密码..."
+          onkeydown="if (event.key === 'Enter') pwConfirm();"
+        />
+        <div class="pw-actions">
+          <button class="pw-cancel" onclick="pwCancel()">取消</button>
+          <button class="pw-confirm" onclick="pwConfirm()">确认</button>
         </div>
       </div>
-      <div class="results-count" id="resultsCount"></div>
-      <div class="recipe-grid" id="recipeGrid"></div>
     </div>
 
-    <div id="view-ingredients" class="view">
-      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; flex-wrap:wrap; gap:10px;">
-        <div>
-          <div style="font-family:'Noto Serif SC',serif; font-size:20px; font-weight:700; margin-bottom:4px;">我的食材</div>
-          <div style="font-size:13px; color:var(--ink-light);">勾选你目前拥有的食材，菜谱页将自动匹配</div>
-        </div>
-        <div style="display:flex; gap:8px; align-items:center;">
-          <span style="font-size:13px; color:var(--ink-light);">已拥有 <strong id="ownedCount" style="color:var(--accent)">0</strong> 种</span>
-          <button class="new-recipe-btn" style="font-size:13px; padding:7px 14px;" onclick="switchView('manage', document.getElementById('tab-manage'))">≡ 编辑清单</button>
-        </div>
-      </div>
-      <div id="ingredientsCheckList"></div>
-    </div>
-
-    <div id="view-manage" class="view">
-      <div class="manage-header">
-        <div class="manage-title">编辑食材清单</div>
-        <div style="font-size:13px; color:var(--ink-light);">管理食材分类，添加或删除食材</div>
-      </div>
-      <div class="manage-grid" id="manageGrid"></div>
-      <div class="new-cat-row">
-        <input type="text" id="newCatInput" placeholder="新分类名称..." onkeydown="if(event.key==='Enter')addCategory()">
-        <button class="new-cat-btn" onclick="addCategory()">＋ 新增分类</button>
-      </div>
-    </div>
-  </main>
-</div>
-
-<div class="modal-overlay" id="modalOverlay" onclick="closeModalOnOverlay(event)">
-  <div class="modal" id="recipeModal">
-    <button class="modal-close" onclick="closeModal()">✕</button>
-    <div id="modalContent"></div>
-  </div>
-</div>
-
-<!-- 密码验证弹窗 -->
-<div class="pw-overlay" id="pwOverlay">
-  <div class="pw-box">
-    <div class="pw-title">需要密码</div>
-    <div class="pw-desc">编辑菜谱需要管理员密码</div>
-    <input type="password" class="pw-input" id="pwInput" placeholder="输入密码..." onkeydown="if(event.key==='Enter')pwConfirm()">
-    <div class="pw-actions">
-      <button class="pw-cancel" onclick="pwCancel()">取消</button>
-      <button class="pw-confirm" onclick="pwConfirm()">确认</button>
-    </div>
-  </div>
-</div>
-
-
-<script src="app.js"></script>
-
-</body>
+    <script src="app.js"></script>
+  </body>
 </html>
