@@ -229,6 +229,197 @@ main {
 .toggle-switch.on {
   background: var(--accent);
 }
+
+/* House Selector Styles */
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-left: auto;
+}
+
+.house-selector {
+  position: relative;
+}
+
+.house-btn {
+  padding: 8px 16px;
+  border: 1.5px solid var(--accent);
+  background: var(--accent-pale);
+  border-radius: 4px;
+  font-family: "Noto Sans SC", sans-serif;
+  font-size: 14px;
+  cursor: pointer;
+  color: var(--accent);
+  transition: all 0.2s;
+  font-weight: 500;
+}
+
+.house-btn:hover {
+  background: var(--accent-light);
+  border-color: var(--accent);
+}
+
+.house-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background: var(--paper);
+  border: 1.5px solid var(--border);
+  border-radius: 4px;
+  margin-top: 8px;
+  width: 340px;
+  max-width: min(92vw, 340px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+}
+
+.house-dropdown.hidden {
+  display: none;
+}
+
+.house-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.house-item {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.2s;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.house-item:last-child {
+  border-bottom: none;
+}
+
+.house-item:hover {
+  background: var(--accent-pale);
+}
+
+.house-item.active {
+  background: var(--accent-light);
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.house-item-label {
+  font-size: 13px;
+  flex: 1;
+}
+
+.house-item-check {
+  font-size: 12px;
+  color: var(--green);
+}
+
+.house-actions {
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.house-action-btn {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  background: transparent;
+  border-radius: 3px;
+  font-family: "Noto Sans SC", sans-serif;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+  color: var(--ink-light);
+  transition: all 0.2s;
+}
+
+.house-action-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.house-action-btn.add {
+  color: var(--green);
+  border-color: var(--green);
+}
+
+.house-action-btn.add:hover {
+  background: var(--green-light);
+}
+
+.house-action-btn.delete {
+  color: #c05050;
+  border-color: #c05050;
+}
+
+.house-action-btn.delete:hover:not(:disabled) {
+  background: #faf0f0;
+}
+
+.house-action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Adjust header-tabs when inside header-controls */
+.header-controls .header-tabs {
+  margin-left: 0;
+}
+
+/* Button styles for dialogs */
+.btn-primary {
+  padding: 8px 18px;
+  border: none;
+  border-radius: 4px;
+  background: var(--ink);
+  color: white;
+  font-family: "Noto Sans SC", sans-serif;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-primary:hover {
+  background: var(--accent);
+}
+
+.btn-secondary {
+  padding: 8px 18px;
+  border: 1.5px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink-light);
+  font-family: "Noto Sans SC", sans-serif;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-secondary:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.btn-danger {
+  padding: 8px 18px;
+  border: none;
+  border-radius: 4px;
+  background: #c05050;
+  color: white;
+  font-family: "Noto Sans SC", sans-serif;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-danger:hover {
+  background: #9a3a3a;
+}
 .toggle-switch::after {
   content: "";
   position: absolute;

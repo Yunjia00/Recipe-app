@@ -170,16 +170,28 @@ let state = {
   recipes: [],
   filter: "all",
   matchOwned: false,
+  currentHouseId: parseInt(localStorage.getItem("current_house_id") || "1"),
+  allHouses: [],
 };
 
 async function loadAll() {
-  const [recipesData, ingsData] = await Promise.all([
+  const [recipesData, housesData] = await Promise.all([
     api("GET", "/recipes"),
-    api("GET", "/ingredients"),
+    api("GET", "/houses"),
   ]);
+  state.allHouses = housesData;
+  if (!state.allHouses.find((h) => h.id === state.currentHouseId)) {
+    state.currentHouseId = state.allHouses.length ? state.allHouses[0].id : 1;
+    localStorage.setItem("current_house_id", String(state.currentHouseId));
+  }
+  const ingsData = await api(
+    "GET",
+    `/ingredients?house_id=${state.currentHouseId}`,
+  );
   state.recipes = recipesData;
   state.ingredients = ingsData.ingredients;
   state.extraCategories = ingsData.extraCategories;
+  updateHouseSelector();
 }
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
@@ -228,6 +240,8 @@ function escHtml(s) {
 // ─── VIEWS ────────────────────────────────────────────────────────────────────
 
 function switchView(view, btn) {
+  const houseDropdown = document.getElementById("houseDropdown");
+  if (houseDropdown) houseDropdown.classList.add("hidden");
   document
     .querySelectorAll(".view")
     .forEach((v) => v.classList.remove("active"));
@@ -584,7 +598,10 @@ function toggleOwned(name, checked) {
     );
     pendingOwnedUpdates = {};
     try {
-      await apiAuth("PUT", "/ingredients/owned", { updates });
+      await apiAuth("PUT", "/ingredients/owned", {
+        updates,
+        house_id: state.currentHouseId,
+      });
       showStatus("saved", "已保存");
     } catch (e) {
       if (e.message !== "cancelled") showStatus("error", "保存失败");
@@ -597,9 +614,9 @@ function toggleOwned(name, checked) {
 
 function renderManage() {
   const usedCats = [...new Set(state.ingredients.map((i) => i.category))];
-  const extra = (state.extraCategories || [])
-    .map((c) => c.name)
-    .filter((c) => !usedCats.includes(c));
+  const extra = (state.extraCategories || []).filter(
+    (c) => !usedCats.includes(c),
+  );
   const categories = [...usedCats, ...extra];
 
   document.getElementById("manageGrid").innerHTML = categories
@@ -648,7 +665,10 @@ async function addCategory() {
   }
   showStatus("saving", "保存中...");
   try {
-    await apiAuth("POST", "/ingredients/category", { name });
+    await apiAuth("POST", "/ingredients/category", {
+      name,
+      house_id: state.currentHouseId,
+    });
     if (!state.extraCategories) state.extraCategories = [];
     state.extraCategories.push(name);
     input.value = "";
@@ -696,7 +716,10 @@ document.addEventListener("click", async function (e) {
     if (btn.dataset.confirming) {
       showStatus("saving", "删除中...");
       try {
-        await apiAuth("DELETE", `/ingredients/${encodeURIComponent(name)}`);
+        await apiAuth(
+          "DELETE",
+          `/ingredients/${encodeURIComponent(name)}?house_id=${state.currentHouseId}`,
+        );
         state.ingredients = state.ingredients.filter((i) => i.name !== name);
         showStatus("saved", "已删除");
         renderManage();
@@ -737,8 +760,14 @@ document.addEventListener("click", async function (e) {
         name,
         category: cat,
         owned: false,
+        house_id: state.currentHouseId,
       });
-      state.ingredients.push({ name, category: cat, owned: false });
+      state.ingredients.push({
+        name,
+        category: cat,
+        owned: false,
+        house_id: state.currentHouseId,
+      });
       input.value = "";
       showStatus("saved", "已保存");
       renderManage();
@@ -756,7 +785,7 @@ document.addEventListener("click", async function (e) {
       try {
         await apiAuth(
           "DELETE",
-          `/ingredients/category/${encodeURIComponent(cat)}`,
+          `/ingredients/category/${encodeURIComponent(cat)}?house_id=${state.currentHouseId}`,
         );
         state.ingredients = state.ingredients.filter((i) => i.category !== cat);
         state.extraCategories = (state.extraCategories || []).filter(
@@ -841,6 +870,7 @@ async function finishRenameCategory(inp) {
     await apiAuth("PUT", "/ingredients/category/rename", {
       oldName: oldCat,
       newName: newCat,
+      house_id: state.currentHouseId,
     });
     state.ingredients.forEach((i) => {
       if (i.category === oldCat) i.category = newCat;
@@ -857,6 +887,185 @@ async function finishRenameCategory(inp) {
   }
 }
 
+// ─── HOUSE MANAGEMENT ────────────────────────────────────────────────────────
+
+function updateHouseSelector() {
+  const currentHouse = state.allHouses.find(
+    (h) => h.id === state.currentHouseId,
+  );
+  document.getElementById("currentHouseName").textContent = currentHouse
+    ? currentHouse.name
+    : "默认家";
+
+  document.getElementById("houseList").innerHTML = state.allHouses
+    .map(
+      (
+        h,
+      ) => `<div class="house-item ${h.id === state.currentHouseId ? "active" : ""}" onclick="switchHouse(${h.id})">
+        <span class="house-item-label">${escHtml(h.name)}</span>
+        ${h.id === state.currentHouseId ? '<span class="house-item-check">✓</span>' : ""}
+      </div>`,
+    )
+    .join("");
+
+  document.getElementById("deleteHouseBtn").disabled =
+    state.allHouses.length <= 1;
+  const renameBtn = document.getElementById("renameHouseBtn");
+  if (renameBtn) renameBtn.disabled = state.allHouses.length === 0;
+}
+
+function toggleHouseDropdown() {
+  document.getElementById("houseDropdown").classList.toggle("hidden");
+}
+
+async function switchHouse(houseId) {
+  if (houseId === state.currentHouseId) {
+    document.getElementById("houseDropdown").classList.add("hidden");
+    return;
+  }
+  state.currentHouseId = houseId;
+  localStorage.setItem("current_house_id", String(houseId));
+  const ingsData = await api("GET", `/ingredients?house_id=${houseId}`);
+  state.ingredients = ingsData.ingredients;
+  state.extraCategories = ingsData.extraCategories;
+  updateHouseSelector();
+  document.getElementById("houseDropdown").classList.add("hidden");
+  renderIngredients();
+  renderRecipes();
+  renderManage();
+}
+
+function openNewHouseDialog() {
+  document.getElementById("newHouseName").value = "";
+  document.getElementById("newHouseOverlay").classList.add("open");
+  document.getElementById("houseDropdown").classList.add("hidden");
+  setTimeout(() => document.getElementById("newHouseName").focus(), 50);
+}
+
+function closeNewHouseDialog() {
+  document.getElementById("newHouseOverlay").classList.remove("open");
+}
+
+function openRenameHouseDialog() {
+  const currentHouse = state.allHouses.find(
+    (h) => h.id === state.currentHouseId,
+  );
+  if (!currentHouse) return;
+  const input = document.getElementById("renameHouseName");
+  input.value = currentHouse.name;
+  document.getElementById("renameHouseOverlay").classList.add("open");
+  document.getElementById("houseDropdown").classList.add("hidden");
+  setTimeout(() => {
+    input.focus();
+    input.select();
+  }, 50);
+}
+
+function closeRenameHouseDialog() {
+  document.getElementById("renameHouseOverlay").classList.remove("open");
+}
+
+async function confirmRenameHouse() {
+  const input = document.getElementById("renameHouseName");
+  const newName = input.value.trim();
+  const currentHouse = state.allHouses.find(
+    (h) => h.id === state.currentHouseId,
+  );
+  if (!currentHouse) return;
+  if (!newName) {
+    showStatus("error", "家名不能为空");
+    return;
+  }
+  if (newName === currentHouse.name) {
+    closeRenameHouseDialog();
+    return;
+  }
+
+  showStatus("saving", "保存中...");
+  try {
+    const updated = await apiAuth("PUT", `/houses/${state.currentHouseId}`, {
+      name: newName,
+    });
+    state.allHouses = state.allHouses.map((h) =>
+      h.id === updated.id ? updated : h,
+    );
+    closeRenameHouseDialog();
+    updateHouseSelector();
+    showStatus("saved", "已改名");
+  } catch (e) {
+    if (e.message !== "cancelled") showStatus("error", "改名失败或重名");
+    else showStatus("", "");
+  }
+}
+
+async function createNewHouse() {
+  const name = document.getElementById("newHouseName").value.trim();
+  if (!name) return;
+  showStatus("saving", "创建中...");
+  try {
+    const created = await apiAuth("POST", "/houses", { name });
+    state.allHouses.push(created);
+    state.currentHouseId = created.id;
+    localStorage.setItem("current_house_id", String(created.id));
+    state.ingredients = [];
+    state.extraCategories = [];
+    closeNewHouseDialog();
+    updateHouseSelector();
+    renderIngredients();
+    renderRecipes();
+    renderManage();
+    showStatus("saved", "已创建新家");
+  } catch (e) {
+    if (e.message !== "cancelled") showStatus("error", "创建失败或重名");
+    else showStatus("", "");
+  }
+}
+
+function openDeleteHouseDialog() {
+  if (state.allHouses.length <= 1) {
+    showStatus("error", "至少需要一个家");
+    return;
+  }
+  const currentHouse = state.allHouses.find(
+    (h) => h.id === state.currentHouseId,
+  );
+  document.getElementById("deleteHouseName").textContent = currentHouse
+    ? currentHouse.name
+    : "当前家";
+  document.getElementById("deleteHouseOverlay").classList.add("open");
+  document.getElementById("houseDropdown").classList.add("hidden");
+}
+
+function closeDeleteHouseDialog() {
+  document.getElementById("deleteHouseOverlay").classList.remove("open");
+}
+
+async function confirmDeleteHouse() {
+  showStatus("saving", "删除中...");
+  const deletingId = state.currentHouseId;
+  try {
+    await apiAuth("DELETE", `/houses/${deletingId}`);
+    state.allHouses = state.allHouses.filter((h) => h.id !== deletingId);
+    state.currentHouseId = state.allHouses[0].id;
+    localStorage.setItem("current_house_id", String(state.currentHouseId));
+    const ingsData = await api(
+      "GET",
+      `/ingredients?house_id=${state.currentHouseId}`,
+    );
+    state.ingredients = ingsData.ingredients;
+    state.extraCategories = ingsData.extraCategories;
+    closeDeleteHouseDialog();
+    updateHouseSelector();
+    renderIngredients();
+    renderRecipes();
+    renderManage();
+    showStatus("saved", "已删除");
+  } catch (e) {
+    if (e.message !== "cancelled") showStatus("error", "删除失败");
+    else showStatus("", "");
+  }
+}
+
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 
 (async () => {
@@ -864,6 +1073,22 @@ async function finishRenameCategory(inp) {
     await loadAll();
     document.getElementById("loadingOverlay").classList.add("hidden");
     renderRecipes();
+    document.addEventListener("click", (e) => {
+      const selector = document.querySelector(".house-selector");
+      const dropdown = document.getElementById("houseDropdown");
+      if (!selector || !dropdown) return;
+      if (!selector.contains(e.target)) dropdown.classList.add("hidden");
+    });
+    document
+      .getElementById("newHouseName")
+      .addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") createNewHouse();
+      });
+    document
+      .getElementById("renameHouseName")
+      .addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") confirmRenameHouse();
+      });
   } catch (e) {
     document.getElementById("loadingOverlay").innerHTML =
       `<div style="color:#c05050; text-align:center; padding:40px">

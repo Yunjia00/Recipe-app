@@ -23,6 +23,7 @@ RECIPE_PASSWORD = os.getenv("RECIPE_PASSWORD", "changeme")
 def init_db():
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
 
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS recipes (
@@ -35,17 +36,85 @@ def init_db():
             notes TEXT
     );
 
-    CREATE TABLE IF NOT EXISTS ingredients (
+    CREATE TABLE IF NOT EXISTS houses (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL UNIQUE,
-        category TEXT NOT NULL,
-        owned INTEGER NOT NULL DEFAULT 0
-    );
-
-    CREATE TABLE IF NOT EXISTS extra_categories (
-        name TEXT PRIMARY KEY
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
                  """)
+
+    # ingredients 旧表迁移：从 UNIQUE(name) 升级为 UNIQUE(name, house_id)
+    ingredient_cols = [
+        r["name"] for r in conn.execute("PRAGMA table_info(ingredients)").fetchall()
+    ]
+    if not ingredient_cols:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS ingredients (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                category TEXT NOT NULL,
+                owned INTEGER NOT NULL DEFAULT 0,
+                house_id INTEGER NOT NULL DEFAULT 1,
+                UNIQUE(name, house_id)
+            )
+            """
+        )
+    elif "house_id" not in ingredient_cols:
+        conn.executescript(
+            """
+            ALTER TABLE ingredients RENAME TO ingredients_old;
+            CREATE TABLE ingredients (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                category TEXT NOT NULL,
+                owned INTEGER NOT NULL DEFAULT 0,
+                house_id INTEGER NOT NULL DEFAULT 1,
+                UNIQUE(name, house_id)
+            );
+            INSERT OR IGNORE INTO ingredients (name, category, owned, house_id)
+            SELECT name, category, owned, 1 FROM ingredients_old;
+            DROP TABLE ingredients_old;
+            """
+        )
+
+    # extra_categories 迁移为按 house_id 隔离
+    extra_cols = [
+        r["name"]
+        for r in conn.execute("PRAGMA table_info(extra_categories)").fetchall()
+    ]
+    if not extra_cols:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS extra_categories (
+                name TEXT NOT NULL,
+                house_id INTEGER NOT NULL DEFAULT 1,
+                PRIMARY KEY (name, house_id)
+            )
+            """
+        )
+    elif "house_id" not in extra_cols:
+        conn.executescript(
+            """
+            ALTER TABLE extra_categories RENAME TO extra_categories_old;
+            CREATE TABLE extra_categories (
+                name TEXT NOT NULL,
+                house_id INTEGER NOT NULL DEFAULT 1,
+                PRIMARY KEY (name, house_id)
+            );
+            INSERT OR IGNORE INTO extra_categories (name, house_id)
+            SELECT name, 1 FROM extra_categories_old;
+            DROP TABLE extra_categories_old;
+            """
+        )
+
+    # 创建默认家（如果不存在）
+    default_house_count = conn.execute(
+        "SELECT COUNT(*) FROM houses WHERE id=1"
+    ).fetchone()[0]
+    if default_house_count == 0:
+        conn.execute("INSERT INTO houses (id, name) VALUES (1, '默认家')")
+        conn.commit()
 
     count = conn.execute("SELECT COUNT(*) FROM recipes").fetchone()[0]
     print(count)
@@ -68,11 +137,11 @@ def init_db():
 
         for i in data["ingredients"]:
             conn.execute(
-                "INSERT INTO ingredients (name, category, owned) VALUES (?,?,?)",
-                (i["name"], i["category"], (1 if i["owned"] else 0)),
+                "INSERT INTO ingredients (name, category, owned, house_id) VALUES (?,?,?,?)",
+                (i["name"], i["category"], (1 if i["owned"] else 0), 1),
             )
 
-    # 迁移旧数据
+    # 迁移旧数据：recipes 格式
     rows = conn.execute("SELECT id, ingredients FROM recipes").fetchall()
     for row in rows:
         ingredients = json.loads(row["ingredients"] or "[]")
@@ -83,6 +152,8 @@ def init_db():
                 "UPDATE recipes SET ingredients=? WHERE id=?",
                 [json.dumps(new_ingredients, ensure_ascii=False), row["id"]],
             )
+
+    conn.execute("UPDATE ingredients SET house_id=1 WHERE house_id IS NULL")
 
     conn.commit()
     conn.close()
@@ -123,6 +194,7 @@ class IngredientBody(BaseModel):
     name: str
     category: str
     owned: bool = False
+    house_id: int = 1
 
 
 class OwnedUpdate(BaseModel):
@@ -132,14 +204,21 @@ class OwnedUpdate(BaseModel):
 
 class OwnedBatch(BaseModel):
     updates: list[OwnedUpdate]
+    house_id: int = 1
 
 
 class CategoryRename(BaseModel):
     oldName: str
     newName: str
+    house_id: int = 1
 
 
 class CategoryBody(BaseModel):
+    name: str
+    house_id: int = 1
+
+
+class HouseBody(BaseModel):
     name: str
 
 
@@ -147,6 +226,75 @@ class CategoryBody(BaseModel):
 def require_auth(x_recipe_password: str = Header(default="")):
     if x_recipe_password != RECIPE_PASSWORD:
         raise HTTPException(status_code=401, detail="密码错误?")
+
+
+# Routes of houses
+## 1. Get all houses
+@app.get("/api/houses")
+def get_houses(db=Depends(get_db)):
+    rows = db.execute("SELECT id, name, created_at FROM houses ORDER BY id").fetchall()
+    return [dict(row) for row in rows]
+
+
+## 2. Create new house
+@app.post("/api/houses", dependencies=[Depends(require_auth)])
+def create_house(body: HouseBody, db=Depends(get_db)):
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="家名不能为空")
+    try:
+        db.execute("INSERT INTO houses (name) VALUES (?)", [name])
+        db.commit()
+        # 获取新创建的家的 ID
+        new_house = db.execute(
+            "SELECT id, name, created_at FROM houses WHERE name=?", [name]
+        ).fetchone()
+        return dict(new_house)
+    except Exception:
+        raise HTTPException(status_code=409, detail="家已存在")
+
+
+## 3. Rename house
+@app.put("/api/houses/{house_id}", dependencies=[Depends(require_auth)])
+def rename_house(house_id: int, body: HouseBody, db=Depends(get_db)):
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="家名不能为空")
+
+    house = db.execute("SELECT id FROM houses WHERE id=?", [house_id]).fetchone()
+    if not house:
+        raise HTTPException(status_code=404, detail="家不存在")
+
+    try:
+        db.execute("UPDATE houses SET name=? WHERE id=?", [name, house_id])
+        db.commit()
+        updated = db.execute(
+            "SELECT id, name, created_at FROM houses WHERE id=?", [house_id]
+        ).fetchone()
+        return dict(updated)
+    except Exception:
+        raise HTTPException(status_code=409, detail="家已存在")
+
+
+## 4. Delete house
+@app.delete("/api/houses/{house_id}", dependencies=[Depends(require_auth)])
+def delete_house(house_id: int, db=Depends(get_db)):
+    # 检查是否至少有一个家
+    house_count = db.execute("SELECT COUNT(*) FROM houses").fetchone()[0]
+    if house_count <= 1:
+        raise HTTPException(status_code=400, detail="至少需要一个家")
+
+    # 检查家是否存在
+    house = db.execute("SELECT id FROM houses WHERE id=?", [house_id]).fetchone()
+    if not house:
+        raise HTTPException(status_code=404, detail="家不存在")
+
+    # 删除家及其食材与分类
+    db.execute("DELETE FROM ingredients WHERE house_id=?", [house_id])
+    db.execute("DELETE FROM extra_categories WHERE house_id=?", [house_id])
+    db.execute("DELETE FROM houses WHERE id=?", [house_id])
+    db.commit()
+    return {"ok": True}
 
 
 # Routes of recipes
@@ -205,12 +353,21 @@ def delete_recipe(recipe_id: int, db=Depends(get_db)):
 
 
 # Routes of ingredients
-## 1. Aeccess all ingredient
+## 1. Access all ingredients for a house
 @app.get("/api/ingredients")
-def get_ingredients(db=Depends(get_db)):
-    rows = db.execute("SELECT * FROM ingredients ORDER BY category, name").fetchall()
-    cats = db.execute("SELECT name FROM extra_categories").fetchall()
-    return {"ingredients": rows, "extraCategories": cats}
+def get_ingredients(house_id: int = 1, db=Depends(get_db)):
+    rows = db.execute(
+        "SELECT id, name, category, owned FROM ingredients WHERE house_id=? ORDER BY category, name",
+        [house_id],
+    ).fetchall()
+    cats = db.execute(
+        "SELECT name FROM extra_categories WHERE house_id=? ORDER BY name",
+        [house_id],
+    ).fetchall()
+    return {
+        "ingredients": [dict(row) for row in rows],
+        "extraCategories": [row["name"] for row in cats],
+    }
 
 
 ## 2. Add ingredients
@@ -218,8 +375,8 @@ def get_ingredients(db=Depends(get_db)):
 def add_ingredients(body: IngredientBody, db=Depends(get_db)):
     try:
         db.execute(
-            "INSERT INTO ingredients (name, category, owned) VALUES (?, ?, ?)",
-            [body.name, body.category, body.owned],
+            "INSERT INTO ingredients (name, category, owned, house_id) VALUES (?, ?, ?, ?)",
+            [body.name, body.category, body.owned, body.house_id],
         )
         db.commit()
         return {"ok": True}
@@ -232,17 +389,17 @@ def add_ingredients(body: IngredientBody, db=Depends(get_db)):
 def toggle_owned(body: OwnedBatch, db=Depends(get_db)):
     for u in body.updates:
         db.execute(
-            "UPDATE ingredients SET owned=? WHERE name=?",
-            [(1 if u.owned else 0), u.name],
+            "UPDATE ingredients SET owned=? WHERE name=? AND house_id=?",
+            [(1 if u.owned else 0), u.name, body.house_id],
         )
     db.commit()
     return {"ok": True}
 
 
-## 4. delete Ingredients
+## 4. Delete Ingredients
 @app.delete("/api/ingredients/{name}", dependencies=[Depends(require_auth)])
-def delete_ingredients(name: str, db=Depends(get_db)):
-    db.execute("DELETE FROM ingredients WHERE name=?", [name])
+def delete_ingredients(name: str, house_id: int = 1, db=Depends(get_db)):
+    db.execute("DELETE FROM ingredients WHERE name=? AND house_id=?", [name, house_id])
     db.commit()
     return {"ok": True}
 
@@ -251,9 +408,14 @@ def delete_ingredients(name: str, db=Depends(get_db)):
 @app.delete(
     "/api/ingredients/category/{cat_name}", dependencies=[Depends(require_auth)]
 )
-def delete_category(cat_name: str, db=Depends(get_db)):
-    db.execute("DELETE FROM ingredients WHERE category=?", [cat_name])
-    db.execute("DELETE FROM extra_categories WHERE name=?", [cat_name])
+def delete_category(cat_name: str, house_id: int = 1, db=Depends(get_db)):
+    db.execute(
+        "DELETE FROM ingredients WHERE category=? AND house_id=?", [cat_name, house_id]
+    )
+    db.execute(
+        "DELETE FROM extra_categories WHERE name=? AND house_id=?",
+        [cat_name, house_id],
+    )
     db.commit()
     return {"ok": True}
 
@@ -262,11 +424,12 @@ def delete_category(cat_name: str, db=Depends(get_db)):
 @app.put("/api/ingredients/category/rename", dependencies=[Depends(require_auth)])
 def rename_category(body: CategoryRename, db=Depends(get_db)):
     db.execute(
-        "UPDATE ingredients SET category=? WHERE category=?",
-        [body.newName, body.oldName],
+        "UPDATE ingredients SET category=? WHERE category=? AND house_id=?",
+        [body.newName, body.oldName, body.house_id],
     )
     db.execute(
-        "UPDATE extra_categories SET name=? WHERE name=?", [body.newName, body.oldName]
+        "UPDATE extra_categories SET name=? WHERE name=? AND house_id=?",
+        [body.newName, body.oldName, body.house_id],
     )
     db.commit()
     return {"ok": True}
@@ -275,7 +438,13 @@ def rename_category(body: CategoryRename, db=Depends(get_db)):
 ## 7. Add a new Category
 @app.post("/api/ingredients/category", dependencies=[Depends(require_auth)])
 def add_category(body: CategoryBody, db=Depends(get_db)):
-    db.execute("INSERT OR IGNORE INTO extra_categories (name) VALUES (?)", [body.name])
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="分类名不能为空")
+    db.execute(
+        "INSERT OR IGNORE INTO extra_categories (name, house_id) VALUES (?, ?)",
+        [name, body.house_id],
+    )
     db.commit()
     return {"ok": True}
 

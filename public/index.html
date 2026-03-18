@@ -20,28 +20,61 @@
     <div class="app">
       <header>
         <div class="logo">🐱 喵王的<span>食谱</span></div>
-        <div class="header-tabs">
-          <button
-            class="tab-btn active"
-            id="tab-recipes"
-            onclick="switchView('recipes', this)"
-          >
-            🍽 菜谱
-          </button>
-          <button
-            class="tab-btn"
-            id="tab-ingredients"
-            onclick="switchView('ingredients', this)"
-          >
-            🛒 食材
-          </button>
-          <button
-            class="tab-btn"
-            id="tab-manage"
-            onclick="switchView('manage', this)"
-          >
-            ≡ 编辑清单
-          </button>
+        <div class="header-controls">
+          <div class="house-selector">
+            <button class="house-btn" onclick="toggleHouseDropdown()">
+              🏠 <span id="currentHouseName">默认家</span>
+            </button>
+            <div id="houseDropdown" class="house-dropdown hidden">
+              <div id="houseList" class="house-list"></div>
+              <div class="house-actions">
+                <button
+                  class="house-action-btn add"
+                  onclick="openNewHouseDialog()"
+                >
+                  ＋ 新家
+                </button>
+                <button
+                  class="house-action-btn"
+                  id="renameHouseBtn"
+                  onclick="openRenameHouseDialog()"
+                >
+                  ✏ 改名
+                </button>
+                <button
+                  class="house-action-btn delete"
+                  id="deleteHouseBtn"
+                  disabled
+                  onclick="openDeleteHouseDialog()"
+                >
+                  🗑 删除
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="header-tabs">
+            <button
+              class="tab-btn active"
+              id="tab-recipes"
+              onclick="switchView('recipes', this)"
+            >
+              🍽 菜谱
+            </button>
+            <button
+              class="tab-btn"
+              id="tab-ingredients"
+              onclick="switchView('ingredients', this)"
+            >
+              🛒 食材
+            </button>
+            <button
+              class="tab-btn"
+              id="tab-manage"
+              onclick="switchView('manage', this)"
+            >
+              ≡ 编辑清单
+            </button>
+          </div>
         </div>
         <div id="saveStatus"></div>
       </header>
@@ -192,11 +225,127 @@
       </div>
     </div>
 
+    <!-- 新家对话框 -->
+    <div
+      class="modal-overlay"
+      id="newHouseOverlay"
+      onclick="closeNewHouseDialog()"
+    >
+      <div
+        class="modal"
+        style="max-width: 400px"
+        onclick="event.stopPropagation()"
+      >
+        <button class="modal-close" onclick="closeNewHouseDialog()">✕</button>
+        <div style="padding: 20px">
+          <h2 style="margin: 0 0 20px 0; font-size: 1.5em">创建新家</h2>
+          <input
+            type="text"
+            id="newHouseName"
+            placeholder="家的名字"
+            maxlength="50"
+            style="
+              width: 100%;
+              padding: 10px;
+              margin-bottom: 20px;
+              border: 1px solid var(--border);
+              border-radius: 4px;
+              font-size: 1em;
+            "
+          />
+          <div style="display: flex; gap: 10px; justify-content: flex-end">
+            <button class="btn-secondary" onclick="closeNewHouseDialog()">
+              取消
+            </button>
+            <button class="btn-primary" onclick="createNewHouse()">创建</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 改名对话框 -->
+    <div
+      class="modal-overlay"
+      id="renameHouseOverlay"
+      onclick="closeRenameHouseDialog()"
+    >
+      <div
+        class="modal"
+        style="max-width: 400px"
+        onclick="event.stopPropagation()"
+      >
+        <button class="modal-close" onclick="closeRenameHouseDialog()">✕</button>
+        <div style="padding: 20px">
+          <h2 style="margin: 0 0 20px 0; font-size: 1.5em">给家改名</h2>
+          <input
+            type="text"
+            id="renameHouseName"
+            placeholder="新的家名"
+            maxlength="50"
+            style="
+              width: 100%;
+              padding: 10px;
+              margin-bottom: 20px;
+              border: 1px solid var(--border);
+              border-radius: 4px;
+              font-size: 1em;
+            "
+          />
+          <div style="display: flex; gap: 10px; justify-content: flex-end">
+            <button class="btn-secondary" onclick="closeRenameHouseDialog()">
+              取消
+            </button>
+            <button class="btn-primary" onclick="confirmRenameHouse()">
+              保存
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 删除家对话框 -->
+    <div
+      class="modal-overlay"
+      id="deleteHouseOverlay"
+      onclick="closeDeleteHouseDialog()"
+    >
+      <div
+        class="modal"
+        style="max-width: 400px"
+        onclick="event.stopPropagation()"
+      >
+        <button class="modal-close" onclick="closeDeleteHouseDialog()">
+          ✕
+        </button>
+        <div style="padding: 20px">
+          <h2 style="margin: 0 0 20px 0; font-size: 1.5em">删除家</h2>
+          <div
+            style="
+              color: var(--ink-light);
+              margin-bottom: 20px;
+              line-height: 1.6;
+            "
+          >
+            确定要删除家 <strong id="deleteHouseName">默认家</strong> 吗？
+            <br />该家的所有食材将被删除，此操作无法撤销。
+          </div>
+          <div style="display: flex; gap: 10px; justify-content: flex-end">
+            <button class="btn-secondary" onclick="closeDeleteHouseDialog()">
+              取消
+            </button>
+            <button class="btn-danger" onclick="confirmDeleteHouse()">
+              删除
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- 密码验证弹窗 -->
     <div class="pw-overlay" id="pwOverlay">
       <div class="pw-box">
         <div class="pw-title">需要密码</div>
-        <div class="pw-desc">编辑菜谱需要管理员密码</div>
+        <div class="pw-desc">编辑操作需要管理员密码</div>
         <input
           type="password"
           class="pw-input"
