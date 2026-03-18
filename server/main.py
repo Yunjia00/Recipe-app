@@ -247,6 +247,10 @@ class HouseBody(BaseModel):
     name: str
 
 
+class HouseScopeBody(BaseModel):
+    house_id: int = 1
+
+
 # Authentication Function
 def require_auth(x_recipe_password: str = Header(default="")):
     if x_recipe_password != RECIPE_PASSWORD:
@@ -462,6 +466,26 @@ def update_ingredient_stock(body: IngredientStockBody, db=Depends(get_db)):
         raise HTTPException(status_code=404, detail="食材不存在")
     db.commit()
     return {"ok": True}
+
+
+## 3.2 Clear all expired owned ingredients for a house
+@app.put("/api/ingredients/clear-expired", dependencies=[Depends(require_auth)])
+def clear_expired_ingredients(body: HouseScopeBody, db=Depends(get_db)):
+    today = date.today().isoformat()
+    cursor = db.execute(
+        """
+                UPDATE ingredients
+                SET owned=0, stock_date=NULL, expiry_date=NULL
+                WHERE house_id=?
+                    AND owned=1
+                    AND expiry_date IS NOT NULL
+                    AND expiry_date <> ''
+                    AND expiry_date < ?
+                """,
+        [body.house_id, today],
+    )
+    db.commit()
+    return {"ok": True, "cleared": cursor.rowcount}
 
 
 ## 4. Delete Ingredients

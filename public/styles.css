@@ -1016,6 +1016,22 @@ select.edit-field {
   opacity: 0.85;
 }
 
+.clear-expired-btn {
+  padding: 7px 14px;
+  background: #c05050;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  font-family: "Noto Sans SC", sans-serif;
+  transition: opacity 0.15s;
+}
+
+.clear-expired-btn:hover {
+  opacity: 0.85;
+}
+
 .results-count {
   font-size: 13px;
   color: var(--ink-light);

@@ -624,11 +624,11 @@ function renderIngredients() {
             const stockDate = escHtml(ing.stock_date || todayYmd());
             const expiryDate = escHtml(ing.expiry_date || "");
             return `<div class="ingredient-item-card ${ing.owned ? "owned" : ""}">
-          <div class="ingredient-row-main">
-            <label class="ingredient-left" title="勾选表示当前拥有">
+          <div class="ingredient-row-main" data-action="open-stock-panel" data-name="${escHtml(ing.name)}">
+            <div class="ingredient-left" title="点击名称可打开日期设置">
               <input type="checkbox" class="ing-check" ${ing.owned ? "checked" : ""} data-action="toggle-owned" data-name="${escHtml(ing.name)}" style="flex-shrink:0;">
-              <span class="ingredient-name">${escHtml(ing.name)}</span>
-            </label>
+              <span class="ingredient-name" data-action="open-stock-panel" data-name="${escHtml(ing.name)}">${escHtml(ing.name)}</span>
+            </div>
             <div class="ingredient-right">
               ${
                 ing.owned
@@ -653,7 +653,7 @@ function renderIngredients() {
                     <button class="stock-quick-btn" data-action="quick-expiry" data-name="${escHtml(ing.name)}" data-days="3">+3天</button>
                     <button class="stock-quick-btn" data-action="quick-expiry" data-name="${escHtml(ing.name)}" data-days="7">+7天</button>
                     <button class="stock-quick-btn" data-action="quick-expiry" data-name="${escHtml(ing.name)}" data-days="30">+30天</button>
-                    <button class="stock-clear-btn" data-action="clear-expiry" data-name="${escHtml(ing.name)}">清空过期</button>
+                    <button class="stock-clear-btn" data-action="clear-dates" data-name="${escHtml(ing.name)}">清空日期</button>
                     <button class="stock-save-btn" data-action="save-stock" data-name="${escHtml(ing.name)}">保存</button>
                   </div>
                 </div>`
@@ -713,46 +713,6 @@ async function saveIngredientStock(name) {
   }
 }
 
-async function clearIngredientExpiryAndUnown(name) {
-  const ing = state.ingredients.find((i) => i.name === name);
-  if (!ing) return;
-
-  const prev = {
-    owned: !!ing.owned,
-    stock_date: ing.stock_date || null,
-    expiry_date: ing.expiry_date || null,
-  };
-
-  ing.owned = false;
-  ing.stock_date = null;
-  ing.expiry_date = null;
-  state.stockEditorOpen = {};
-
-  renderIngredients();
-  renderRecipes();
-
-  showStatus("saving", "保存中...");
-  try {
-    await apiAuth("PUT", "/ingredients/stock", {
-      name,
-      owned: false,
-      stock_date: null,
-      expiry_date: null,
-      house_id: state.currentHouseId,
-    });
-    showStatus("saved", "已保存");
-  } catch (e) {
-    ing.owned = prev.owned;
-    ing.stock_date = prev.stock_date;
-    ing.expiry_date = prev.expiry_date;
-    state.stockEditorOpen = ing.owned ? { [name]: true } : {};
-    renderIngredients();
-    renderRecipes();
-    if (e.message !== "cancelled") showStatus("error", "保存失败");
-    else showStatus("", "");
-  }
-}
-
 async function toggleOwned(name, checked) {
   const ing = state.ingredients.find((i) => i.name === name);
   if (!ing) return;
@@ -764,7 +724,10 @@ async function toggleOwned(name, checked) {
   };
 
   ing.owned = checked;
-  if (checked && !ing.stock_date) ing.stock_date = todayYmd();
+  if (!checked) {
+    ing.stock_date = null;
+    ing.expiry_date = null;
+  }
   if (checked) state.stockEditorOpen = { [name]: true };
   else state.stockEditorOpen = {};
 
@@ -790,6 +753,29 @@ async function toggleOwned(name, checked) {
     renderIngredients();
     renderRecipes();
     if (e.message !== "cancelled") showStatus("error", "保存失败");
+    else showStatus("", "");
+  }
+}
+
+async function clearExpiredIngredients() {
+  showStatus("saving", "清理过期食材中...");
+  try {
+    const res = await apiAuth("PUT", "/ingredients/clear-expired", {
+      house_id: state.currentHouseId,
+    });
+    const ingsData = await api(
+      "GET",
+      `/ingredients?house_id=${state.currentHouseId}`,
+    );
+    state.ingredients = ingsData.ingredients;
+    state.extraCategories = ingsData.extraCategories;
+    state.stockEditorOpen = {};
+    renderIngredients();
+    renderRecipes();
+    const cleared = res && typeof res.cleared === "number" ? res.cleared : 0;
+    showStatus("saved", `已清理 ${cleared} 个过期食材`);
+  } catch (e) {
+    if (e.message !== "cancelled") showStatus("error", "清理失败");
     else showStatus("", "");
   }
 }
@@ -885,6 +871,17 @@ document.addEventListener("click", async function (e) {
     return;
   }
 
+  if (action === "open-stock-panel") {
+    const name = btn.dataset.name;
+    if (!name) return;
+    const ing = state.ingredients.find((i) => i.name === name);
+    if (!ing || !ing.owned) return;
+    const willOpen = !state.stockEditorOpen[name];
+    state.stockEditorOpen = willOpen ? { [name]: true } : {};
+    renderIngredients();
+    return;
+  }
+
   if (action === "quick-expiry") {
     const name = btn.dataset.name;
     const days = parseInt(btn.dataset.days || "0", 10);
@@ -898,10 +895,14 @@ document.addEventListener("click", async function (e) {
     return;
   }
 
-  if (action === "clear-expiry") {
+  if (action === "clear-dates") {
     const name = btn.dataset.name;
     if (!name) return;
-    await clearIngredientExpiryAndUnown(name);
+    const stockInput = findStockInput(name, "stock-date");
+    const expiryInput = findStockInput(name, "expiry-date");
+    if (stockInput) stockInput.value = "";
+    if (expiryInput) expiryInput.value = "";
+    showStatus("", "");
     return;
   }
 
