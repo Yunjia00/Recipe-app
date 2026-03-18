@@ -87,9 +87,16 @@ header {
 
 /* Save indicator */
 #saveStatus {
+  flex: 0 0 170px;
+  width: 170px;
+  min-height: 24px;
   font-size: 12px;
   padding: 4px 12px;
   border-radius: 3px;
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   transition: all 0.3s;
   opacity: 0;
 }
@@ -780,6 +787,11 @@ select.edit-field {
   }
   .logo {
     font-size: 18px;
+  }
+
+  #saveStatus {
+    flex-basis: 120px;
+    width: 120px;
   }
 
   .stock-grid {

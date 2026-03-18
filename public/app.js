@@ -152,14 +152,23 @@ async function apiAuth(method, path, body) {
   return readJsonSafe(res);
 }
 
+let saveStatusTimer = null;
+
 function showStatus(type, text) {
   const el = document.getElementById("saveStatus");
+  if (saveStatusTimer) {
+    clearTimeout(saveStatusTimer);
+    saveStatusTimer = null;
+  }
+  // Reset inline opacity so class-based states can be shown repeatedly.
+  el.style.opacity = "";
   el.className = type;
   el.textContent = text;
-  if (type === "saved")
-    setTimeout(() => {
+  if (type === "saved") {
+    saveStatusTimer = setTimeout(() => {
       el.style.opacity = 0;
     }, 2000);
+  }
 }
 
 // ─── STATE ────────────────────────────────────────────────────────────────────
