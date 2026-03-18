@@ -7,10 +7,12 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.staticfiles import StaticFiles
+from routers import changelog
 
 load_dotenv()
-
 app = FastAPI()
+app.include_router(changelog.router)
+
 
 ## Configurations
 PORT = int(os.getenv("PORT", 3000))
