@@ -267,13 +267,36 @@ main {
   opacity: 0.65;
 }
 
-.card-method {
-  display: inline-block;
+.card-top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.card-match-badges {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.card-method,
+.match-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  line-height: 1;
+  padding: 0 10px;
   font-size: 11px;
   font-weight: 500;
-  padding: 3px 10px;
   border-radius: 3px;
-  margin-bottom: 10px;
+  box-sizing: border-box;
+}
+
+.card-method {
+  margin-bottom: 0;
   letter-spacing: 0.5px;
 }
 .method-boil {
@@ -330,10 +353,6 @@ main {
   text-decoration: line-through;
 }
 .match-badge {
-  font-size: 11px;
-  font-weight: 500;
-  padding: 3px 8px;
-  border-radius: 3px;
   background: var(--green-light);
   color: var(--green);
 }

@@ -323,7 +323,7 @@ function renderRecipes() {
         ? ``
         : `<div class="match-badge partial">拥有 ${have}/${total}</div>`;
 
-      const badge = `<div style="position:absolute; top:14px; right:14px; display:flex; gap:4px; flex-wrap:wrap;">${badge1}${badge2}</div>`;
+      const badge = `<div class="card-match-badges">${badge1}${badge2}</div>`;
 
       const ings = r.ingredients
         .map(
@@ -332,8 +332,10 @@ function renderRecipes() {
         )
         .join("");
       return `<div class="recipe-card ${full ? "" : "missing-some"}" onclick="openRecipe(${r.id})">
-      ${badge}
-      <div class="card-method ${ml.cls}">${ml.text}</div>
+      <div class="card-top-row">
+        <div class="card-method ${ml.cls}">${ml.text}</div>
+        ${badge}
+      </div>
       <div class="card-title">${escHtml(r.title)}</div>
       <div class="card-desc">${escHtml(r.desc)}</div>
       <div class="card-ingredients">${ings}</div>
