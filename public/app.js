@@ -595,9 +595,9 @@ function toggleOwned(name, checked) {
 
 function renderManage() {
   const usedCats = [...new Set(state.ingredients.map((i) => i.category))];
-  const extra = (state.extraCategories || []).filter(
-    (c) => !usedCats.includes(c),
-  );
+  const extra = (state.extraCategories || [])
+    .map((c) => c.name)
+    .filter((c) => !usedCats.includes(c));
   const categories = [...usedCats, ...extra];
 
   document.getElementById("manageGrid").innerHTML = categories
