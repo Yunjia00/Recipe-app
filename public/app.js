@@ -873,3 +873,8 @@ async function finishRenameCategory(inp) {
       </div>`;
   }
 })();
+
+// Fetch the version
+fetch("/api/version")
+  .then((r) => r.json())
+  .then((d) => (document.getElementById("version").textContent = d.version));

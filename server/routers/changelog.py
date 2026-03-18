@@ -20,6 +20,16 @@ MONTH_NAMES = {
 }
 
 
+def get_current_version(repo_path: str = ".") -> str:
+    result = subprocess.run(
+        ["git", "describe", "--tags", "--abbrev=0"],
+        capture_output=True,
+        text=True,
+        cwd=repo_path,
+    )
+    return result.stdout.strip() or "dev"
+
+
 def get_commits(max_count: int = 100, repo_path: str = ".") -> list[dict]:
     sep = "\x1f"
     rec_sep = "\x1e"
@@ -61,6 +71,13 @@ def get_commits(max_count: int = 100, repo_path: str = ".") -> list[dict]:
             if stat_result.stdout.strip()
             else ""
         )
+        tag_result = subprocess.run(
+            ["git", "tag", "--points-at", full_hash],
+            capture_output=True,
+            text=True,
+            cwd=repo_path,
+        )
+        tag = tag_result.stdout.strip()
 
         commits.append(
             {
@@ -74,6 +91,7 @@ def get_commits(max_count: int = 100, repo_path: str = ".") -> list[dict]:
                 "day": date_str[8:10],  # "15"
                 "stat_lines": stat_lines,
                 "summary": summary,
+                "tag": tag,
             }
         )
 
@@ -108,6 +126,8 @@ def render_commit(c: dict, is_last: bool) -> str:
     body_html = f'<p class="cl-body">{c["body"]}</p>' if c["body"] else ""
     stat_html = render_stat(c["stat_lines"], c["summary"])
     bottom_line = "" if is_last else '<div class="cl-line"></div>'
+    tag_html = f'<span class="cl-tag">{c["tag"]}</span>' if c["tag"] else ""
+
     return f"""
       <div class="cl-item">
         <div class="cl-spine">
@@ -118,7 +138,7 @@ def render_commit(c: dict, is_last: bool) -> str:
           <div class="cl-card-head">
             <span class="cl-hash">{c["short_hash"]}</span>
             <span class="cl-day">{c["date"]}</span>
-            
+            {tag_html}
           </div>
           <p class="cl-subject">{c["subject"]}</p>
           {body_html}
@@ -343,6 +363,15 @@ def render_page(commits: list[dict]) -> str:
     margin-bottom: 0.75rem;
     }}
     .cl-back:hover {{text-decoration: underline; }} 
+    .cl-tag {{
+        font-size: 0.7rem;
+        font-weight: 600;
+        background: #e1f5ee;
+        color: #0f6e56;
+        padding: 2px 7px;
+        border-radius: 20px;
+        border: 1px solid #5DCAA5;
+        }}
   </style>
 </head>
 <body>
@@ -367,3 +396,8 @@ async def changelog(n: int = 100):
     """
     commits = get_commits(max_count=n)
     return render_page(commits)
+
+
+@router.get("/api/version")
+async def version():
+    return {"version": get_current_version()}
