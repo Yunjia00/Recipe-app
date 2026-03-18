@@ -6,6 +6,7 @@ services:
       - "3000:3000" # 改成你想要的端口，如 "8080:3000"
     volumes:
       - ./data:/data # 数据库文件持久化到本地 ./data 目录
+      - ./.git:/app/.git:ro # Get git history into docker.
     environment:
       - RECIPE_PASSWORD=${RECIPE_PASSWORD} # ← 改成你自己的密码
     restart: unless-stopped
