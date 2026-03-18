@@ -172,6 +172,7 @@ let state = {
   matchOwned: false,
   currentHouseId: parseInt(localStorage.getItem("current_house_id") || "1"),
   allHouses: [],
+  stockEditorOpen: {},
 };
 
 async function loadAll() {
@@ -191,6 +192,7 @@ async function loadAll() {
   state.recipes = recipesData;
   state.ingredients = ingsData.ingredients;
   state.extraCategories = ingsData.extraCategories;
+  state.stockEditorOpen = {};
   updateHouseSelector();
 }
 
@@ -235,6 +237,58 @@ function escHtml(s) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function todayYmd() {
+  const now = new Date();
+  const tzOffset = now.getTimezoneOffset() * 60000;
+  return new Date(now.getTime() - tzOffset).toISOString().slice(0, 10);
+}
+
+function parseYmdLocal(ymd) {
+  if (!ymd) return null;
+  const [yy, mm, dd] = ymd.split("-").map((v) => parseInt(v, 10));
+  if (!yy || !mm || !dd) return null;
+  return new Date(yy, mm - 1, dd);
+}
+
+function formatMonthDay(ymd) {
+  const d = parseYmdLocal(ymd);
+  if (!d) return "";
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${mm}-${dd}`;
+}
+
+function getExpiryMeta(expiryDate) {
+  if (!expiryDate) return { text: "未设置保质期", cls: "none" };
+  const expiry = parseYmdLocal(expiryDate);
+  if (!expiry) return { text: "日期格式异常", cls: "none" };
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const diffDays = Math.floor((expiry - today) / 86400000);
+  if (diffDays < 0)
+    return { text: `已过期 ${Math.abs(diffDays)} 天`, cls: "expired" };
+  if (diffDays === 0) return { text: "今日到期", cls: "due" };
+  if (diffDays <= 3) return { text: `剩 ${diffDays} 天`, cls: "warn" };
+  return { text: `将于 ${formatMonthDay(expiryDate)} 过期`, cls: "ok" };
+}
+
+function findStockInput(name, role) {
+  const inputs = Array.from(
+    document.querySelectorAll(`input[data-role="${role}"]`),
+  );
+  return inputs.find((el) => el.dataset.name === name) || null;
+}
+
+function withDays(baseYmd, days) {
+  const base = parseYmdLocal(baseYmd) || parseYmdLocal(todayYmd());
+  const out = new Date(base);
+  out.setDate(out.getDate() + days);
+  const yy = out.getFullYear();
+  const mm = String(out.getMonth() + 1).padStart(2, "0");
+  const dd = String(out.getDate()).padStart(2, "0");
+  return `${yy}-${mm}-${dd}`;
 }
 
 // ─── VIEWS ────────────────────────────────────────────────────────────────────
@@ -562,15 +616,51 @@ function renderIngredients() {
     const items = state.ingredients.filter((i) => i.category === cat);
     html += `<div style="margin-bottom:20px;">
       <div style="font-family:'Noto Serif SC',serif; font-size:14px; font-weight:600; color:var(--accent); letter-spacing:1px; margin-bottom:10px; padding-bottom:6px; border-bottom:1px solid var(--border);">${escHtml(cat)}</div>
-      <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:6px;">
+      <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:10px; align-items:start;">
         ${items
-          .map(
-            (ing) => `
-          <label style="display:flex; align-items:center; gap:8px; padding:8px 10px; background:var(--paper); border:1.5px solid ${ing.owned ? "var(--accent-light)" : "var(--border)"}; border-radius:5px; cursor:pointer; transition:border-color 0.15s;">
-            <input type="checkbox" class="ing-check" ${ing.owned ? "checked" : ""} data-action="toggle-owned" data-name="${escHtml(ing.name)}" style="flex-shrink:0;">
-            <span style="font-size:14px;">${escHtml(ing.name)}</span>
-          </label>`,
-          )
+          .map((ing) => {
+            const expiryMeta = getExpiryMeta(ing.expiry_date);
+            const isOpen = !!state.stockEditorOpen[ing.name];
+            const stockDate = escHtml(ing.stock_date || todayYmd());
+            const expiryDate = escHtml(ing.expiry_date || "");
+            return `<div class="ingredient-item-card ${ing.owned ? "owned" : ""}">
+          <div class="ingredient-row-main">
+            <label class="ingredient-left" title="勾选表示当前拥有">
+              <input type="checkbox" class="ing-check" ${ing.owned ? "checked" : ""} data-action="toggle-owned" data-name="${escHtml(ing.name)}" style="flex-shrink:0;">
+              <span class="ingredient-name">${escHtml(ing.name)}</span>
+            </label>
+            <div class="ingredient-right">
+              ${
+                ing.owned
+                  ? `<span class="expiry-badge ${expiryMeta.cls}">${escHtml(expiryMeta.text)}</span>
+                     <button class="stock-toggle-btn" data-action="toggle-stock-panel" data-name="${escHtml(ing.name)}">${isOpen ? "收起日期" : "设置日期"}</button>`
+                  : ""
+              }
+            </div>
+          </div>
+          ${
+            ing.owned
+              ? `<div class="ingredient-stock-panel ${isOpen ? "open" : ""}">
+                  <div class="stock-grid">
+                    <label class="stock-field">入库日期
+                      <input type="date" value="${stockDate}" data-role="stock-date" data-name="${escHtml(ing.name)}">
+                    </label>
+                    <label class="stock-field">过期日期（可选）
+                      <input type="date" value="${expiryDate}" data-role="expiry-date" data-name="${escHtml(ing.name)}">
+                    </label>
+                  </div>
+                  <div class="stock-actions-row">
+                    <button class="stock-quick-btn" data-action="quick-expiry" data-name="${escHtml(ing.name)}" data-days="3">+3天</button>
+                    <button class="stock-quick-btn" data-action="quick-expiry" data-name="${escHtml(ing.name)}" data-days="7">+7天</button>
+                    <button class="stock-quick-btn" data-action="quick-expiry" data-name="${escHtml(ing.name)}" data-days="30">+30天</button>
+                    <button class="stock-clear-btn" data-action="clear-expiry" data-name="${escHtml(ing.name)}">清空过期</button>
+                    <button class="stock-save-btn" data-action="save-stock" data-name="${escHtml(ing.name)}">保存</button>
+                  </div>
+                </div>`
+              : ""
+          }
+        </div>`;
+          })
           .join("")}
       </div>
     </div>`;
@@ -578,36 +668,130 @@ function renderIngredients() {
   document.getElementById("ingredientsCheckList").innerHTML = html;
 }
 
-// Debounce owned updates to batch them
-let ownedDebounceTimer = null;
-let pendingOwnedUpdates = {};
-
-function toggleOwned(name, checked) {
+async function saveIngredientStock(name) {
   const ing = state.ingredients.find((i) => i.name === name);
   if (!ing) return;
-  ing.owned = checked;
+
+  const stockInput = findStockInput(name, "stock-date");
+  const expiryInput = findStockInput(name, "expiry-date");
+  if (!stockInput) return;
+
+  const stockDate = stockInput.value || todayYmd();
+  const expiryDate = (expiryInput?.value || "").trim();
+
+  if (stockInput.value !== stockDate) stockInput.value = stockDate;
+  if (expiryDate && expiryDate < stockDate) {
+    showStatus("error", "过期日期不能早于入库日期");
+    if (expiryInput) {
+      expiryInput.style.borderColor = "#c05050";
+      setTimeout(() => {
+        expiryInput.style.borderColor = "";
+      }, 1400);
+    }
+    return;
+  }
+
+  ing.stock_date = stockDate;
+  ing.expiry_date = expiryDate || null;
+
+  showStatus("saving", "保存中...");
+  try {
+    await apiAuth("PUT", "/ingredients/stock", {
+      name,
+      owned: !!ing.owned,
+      stock_date: ing.stock_date,
+      expiry_date: ing.expiry_date,
+      house_id: state.currentHouseId,
+    });
+    delete state.stockEditorOpen[name];
+    showStatus("saved", "已保存");
+    renderIngredients();
+    renderRecipes();
+  } catch (e) {
+    if (e.message !== "cancelled") showStatus("error", "保存失败");
+    else showStatus("", "");
+  }
+}
+
+async function clearIngredientExpiryAndUnown(name) {
+  const ing = state.ingredients.find((i) => i.name === name);
+  if (!ing) return;
+
+  const prev = {
+    owned: !!ing.owned,
+    stock_date: ing.stock_date || null,
+    expiry_date: ing.expiry_date || null,
+  };
+
+  ing.owned = false;
+  ing.stock_date = null;
+  ing.expiry_date = null;
+  state.stockEditorOpen = {};
+
   renderIngredients();
   renderRecipes();
 
-  pendingOwnedUpdates[name] = checked;
-  clearTimeout(ownedDebounceTimer);
   showStatus("saving", "保存中...");
-  ownedDebounceTimer = setTimeout(async () => {
-    const updates = Object.entries(pendingOwnedUpdates).map(
-      ([name, owned]) => ({ name, owned }),
-    );
-    pendingOwnedUpdates = {};
-    try {
-      await apiAuth("PUT", "/ingredients/owned", {
-        updates,
-        house_id: state.currentHouseId,
-      });
-      showStatus("saved", "已保存");
-    } catch (e) {
-      if (e.message !== "cancelled") showStatus("error", "保存失败");
-      else showStatus("", "");
-    }
-  }, 800);
+  try {
+    await apiAuth("PUT", "/ingredients/stock", {
+      name,
+      owned: false,
+      stock_date: null,
+      expiry_date: null,
+      house_id: state.currentHouseId,
+    });
+    showStatus("saved", "已保存");
+  } catch (e) {
+    ing.owned = prev.owned;
+    ing.stock_date = prev.stock_date;
+    ing.expiry_date = prev.expiry_date;
+    state.stockEditorOpen = ing.owned ? { [name]: true } : {};
+    renderIngredients();
+    renderRecipes();
+    if (e.message !== "cancelled") showStatus("error", "保存失败");
+    else showStatus("", "");
+  }
+}
+
+async function toggleOwned(name, checked) {
+  const ing = state.ingredients.find((i) => i.name === name);
+  if (!ing) return;
+
+  const prev = {
+    owned: !!ing.owned,
+    stock_date: ing.stock_date || null,
+    expiry_date: ing.expiry_date || null,
+  };
+
+  ing.owned = checked;
+  if (checked && !ing.stock_date) ing.stock_date = todayYmd();
+  if (checked) state.stockEditorOpen = { [name]: true };
+  else state.stockEditorOpen = {};
+
+  renderIngredients();
+  renderRecipes();
+
+  showStatus("saving", "保存中...");
+  try {
+    await apiAuth("PUT", "/ingredients/stock", {
+      name,
+      owned: checked,
+      stock_date: ing.stock_date || null,
+      expiry_date: ing.expiry_date || null,
+      house_id: state.currentHouseId,
+    });
+    showStatus("saved", "已保存");
+  } catch (e) {
+    ing.owned = prev.owned;
+    ing.stock_date = prev.stock_date;
+    ing.expiry_date = prev.expiry_date;
+    if (ing.owned) state.stockEditorOpen[name] = true;
+    else delete state.stockEditorOpen[name];
+    renderIngredients();
+    renderRecipes();
+    if (e.message !== "cancelled") showStatus("error", "保存失败");
+    else showStatus("", "");
+  }
 }
 
 // ─── MANAGE ──────────────────────────────────────────────────────────────────
@@ -692,6 +876,42 @@ document.addEventListener("click", async function (e) {
     return;
   }
 
+  if (action === "toggle-stock-panel") {
+    const name = btn.dataset.name;
+    if (!name) return;
+    const willOpen = !state.stockEditorOpen[name];
+    state.stockEditorOpen = willOpen ? { [name]: true } : {};
+    renderIngredients();
+    return;
+  }
+
+  if (action === "quick-expiry") {
+    const name = btn.dataset.name;
+    const days = parseInt(btn.dataset.days || "0", 10);
+    if (!name || !days) return;
+    const stockInput = findStockInput(name, "stock-date");
+    const expiryInput = findStockInput(name, "expiry-date");
+    if (!stockInput || !expiryInput) return;
+    const base = stockInput.value || todayYmd();
+    stockInput.value = base;
+    expiryInput.value = withDays(base, days);
+    return;
+  }
+
+  if (action === "clear-expiry") {
+    const name = btn.dataset.name;
+    if (!name) return;
+    await clearIngredientExpiryAndUnown(name);
+    return;
+  }
+
+  if (action === "save-stock") {
+    const name = btn.dataset.name;
+    if (!name) return;
+    await saveIngredientStock(name);
+    return;
+  }
+
   if (action === "delete-recipe") {
     const id = parseInt(btn.dataset.id);
     if (btn.dataset.confirming) {
@@ -766,6 +986,8 @@ document.addEventListener("click", async function (e) {
         name,
         category: cat,
         owned: false,
+        stock_date: null,
+        expiry_date: null,
         house_id: state.currentHouseId,
       });
       input.value = "";
@@ -928,6 +1150,7 @@ async function switchHouse(houseId) {
   const ingsData = await api("GET", `/ingredients?house_id=${houseId}`);
   state.ingredients = ingsData.ingredients;
   state.extraCategories = ingsData.extraCategories;
+  state.stockEditorOpen = {};
   updateHouseSelector();
   document.getElementById("houseDropdown").classList.add("hidden");
   renderIngredients();
@@ -1009,6 +1232,7 @@ async function createNewHouse() {
     localStorage.setItem("current_house_id", String(created.id));
     state.ingredients = [];
     state.extraCategories = [];
+    state.stockEditorOpen = {};
     closeNewHouseDialog();
     updateHouseSelector();
     renderIngredients();
@@ -1054,6 +1278,7 @@ async function confirmDeleteHouse() {
     );
     state.ingredients = ingsData.ingredients;
     state.extraCategories = ingsData.extraCategories;
+    state.stockEditorOpen = {};
     closeDeleteHouseDialog();
     updateHouseSelector();
     renderIngredients();

@@ -1,8 +1,10 @@
 import os
 import json
 import sqlite3
+from datetime import date
 from pathlib import Path
 from time import time_ns
+from typing import Optional
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Depends, Header
@@ -55,6 +57,8 @@ def init_db():
                 name TEXT NOT NULL,
                 category TEXT NOT NULL,
                 owned INTEGER NOT NULL DEFAULT 0,
+                stock_date TEXT,
+                expiry_date TEXT,
                 house_id INTEGER NOT NULL DEFAULT 1,
                 UNIQUE(name, house_id)
             )
@@ -69,6 +73,8 @@ def init_db():
                 name TEXT NOT NULL,
                 category TEXT NOT NULL,
                 owned INTEGER NOT NULL DEFAULT 0,
+                stock_date TEXT,
+                expiry_date TEXT,
                 house_id INTEGER NOT NULL DEFAULT 1,
                 UNIQUE(name, house_id)
             );
@@ -77,6 +83,15 @@ def init_db():
             DROP TABLE ingredients_old;
             """
         )
+
+    # ingredients 新字段迁移：入库日期、过期日期
+    ingredient_cols = [
+        r["name"] for r in conn.execute("PRAGMA table_info(ingredients)").fetchall()
+    ]
+    if "stock_date" not in ingredient_cols:
+        conn.execute("ALTER TABLE ingredients ADD COLUMN stock_date TEXT")
+    if "expiry_date" not in ingredient_cols:
+        conn.execute("ALTER TABLE ingredients ADD COLUMN expiry_date TEXT")
 
     # extra_categories 迁移为按 house_id 隔离
     extra_cols = [
@@ -194,6 +209,8 @@ class IngredientBody(BaseModel):
     name: str
     category: str
     owned: bool = False
+    stock_date: Optional[str] = None
+    expiry_date: Optional[str] = None
     house_id: int = 1
 
 
@@ -204,6 +221,14 @@ class OwnedUpdate(BaseModel):
 
 class OwnedBatch(BaseModel):
     updates: list[OwnedUpdate]
+    house_id: int = 1
+
+
+class IngredientStockBody(BaseModel):
+    name: str
+    owned: bool
+    stock_date: Optional[str] = None
+    expiry_date: Optional[str] = None
     house_id: int = 1
 
 
@@ -226,6 +251,19 @@ class HouseBody(BaseModel):
 def require_auth(x_recipe_password: str = Header(default="")):
     if x_recipe_password != RECIPE_PASSWORD:
         raise HTTPException(status_code=401, detail="密码错误?")
+
+
+def normalize_date(date_str: Optional[str], field_label: str) -> Optional[str]:
+    if date_str is None:
+        return None
+    normalized = date_str.strip()
+    if not normalized:
+        return None
+    try:
+        date.fromisoformat(normalized)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"{field_label}格式应为 YYYY-MM-DD")
+    return normalized
 
 
 # Routes of houses
@@ -357,7 +395,7 @@ def delete_recipe(recipe_id: int, db=Depends(get_db)):
 @app.get("/api/ingredients")
 def get_ingredients(house_id: int = 1, db=Depends(get_db)):
     rows = db.execute(
-        "SELECT id, name, category, owned FROM ingredients WHERE house_id=? ORDER BY category, name",
+        "SELECT id, name, category, owned, stock_date, expiry_date FROM ingredients WHERE house_id=? ORDER BY category, name",
         [house_id],
     ).fetchall()
     cats = db.execute(
@@ -373,10 +411,22 @@ def get_ingredients(house_id: int = 1, db=Depends(get_db)):
 ## 2. Add ingredients
 @app.post("/api/ingredients", dependencies=[Depends(require_auth)])
 def add_ingredients(body: IngredientBody, db=Depends(get_db)):
+    stock_date = normalize_date(body.stock_date, "入库日期")
+    expiry_date = normalize_date(body.expiry_date, "过期日期")
+    if stock_date and expiry_date and expiry_date < stock_date:
+        raise HTTPException(status_code=400, detail="过期日期不能早于入库日期")
+
     try:
         db.execute(
-            "INSERT INTO ingredients (name, category, owned, house_id) VALUES (?, ?, ?, ?)",
-            [body.name, body.category, body.owned, body.house_id],
+            "INSERT INTO ingredients (name, category, owned, stock_date, expiry_date, house_id) VALUES (?, ?, ?, ?, ?, ?)",
+            [
+                body.name,
+                body.category,
+                body.owned,
+                stock_date,
+                expiry_date,
+                body.house_id,
+            ],
         )
         db.commit()
         return {"ok": True}
@@ -392,6 +442,24 @@ def toggle_owned(body: OwnedBatch, db=Depends(get_db)):
             "UPDATE ingredients SET owned=? WHERE name=? AND house_id=?",
             [(1 if u.owned else 0), u.name, body.house_id],
         )
+    db.commit()
+    return {"ok": True}
+
+
+## 3.1 Update ingredient stock + expiry details
+@app.put("/api/ingredients/stock", dependencies=[Depends(require_auth)])
+def update_ingredient_stock(body: IngredientStockBody, db=Depends(get_db)):
+    stock_date = normalize_date(body.stock_date, "入库日期")
+    expiry_date = normalize_date(body.expiry_date, "过期日期")
+    if stock_date and expiry_date and expiry_date < stock_date:
+        raise HTTPException(status_code=400, detail="过期日期不能早于入库日期")
+
+    cursor = db.execute(
+        "UPDATE ingredients SET owned=?, stock_date=?, expiry_date=? WHERE name=? AND house_id=?",
+        [(1 if body.owned else 0), stock_date, expiry_date, body.name, body.house_id],
+    )
+    if cursor.rowcount <= 0:
+        raise HTTPException(status_code=404, detail="食材不存在")
     db.commit()
     return {"ok": True}
 

@@ -781,6 +781,14 @@ select.edit-field {
   .logo {
     font-size: 18px;
   }
+
+  .stock-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .stock-save-btn {
+    margin-left: 0;
+  }
 }
 
 .ing-check {
@@ -802,6 +810,195 @@ select.edit-field {
   background-size: 10px;
   background-position: center;
   background-repeat: no-repeat;
+}
+
+.ingredient-item-card {
+  border: 1.5px solid var(--border);
+  border-radius: 6px;
+  background: var(--paper);
+  overflow: hidden;
+}
+
+.ingredient-item-card.owned {
+  border-color: var(--accent-light);
+}
+
+.ingredient-row-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 10px;
+}
+
+.ingredient-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+  cursor: pointer;
+}
+
+.ingredient-name {
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ingredient-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.expiry-badge {
+  font-size: 11px;
+  border-radius: 3px;
+  border: 1px solid;
+  padding: 2px 7px;
+  white-space: nowrap;
+}
+
+.expiry-badge.none,
+.expiry-badge.optional {
+  color: var(--ink-light);
+  background: #f5f5f5;
+  border-color: #e5e5e5;
+}
+
+.expiry-badge.ok {
+  color: #4b7f57;
+  background: #eaf6eb;
+  border-color: #b8e1bf;
+}
+
+.expiry-badge.warn {
+  color: #8c6a10;
+  background: #fff6dd;
+  border-color: #edd39a;
+}
+
+.expiry-badge.due,
+.expiry-badge.expired {
+  color: #a33b3b;
+  background: #ffeaea;
+  border-color: #efb8b8;
+}
+
+.stock-toggle-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--ink-light);
+  border-radius: 3px;
+  padding: 4px 11px;
+  min-width: 88px;
+  font-size: 12px;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.stock-toggle-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.ingredient-stock-panel {
+  display: none;
+  border-top: 1px dashed var(--border);
+  padding: 10px;
+  background: var(--bg);
+}
+
+.ingredient-stock-panel.open {
+  display: block;
+}
+
+.stock-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.stock-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--ink-light);
+}
+
+.stock-field input {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 1.5px solid var(--border);
+  border-radius: 4px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 15px;
+  font-family: "Noto Sans SC", sans-serif;
+  outline: none;
+}
+
+.stock-field input:focus {
+  border-color: var(--accent);
+}
+
+.stock-actions-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(95px, 1fr));
+  gap: 8px;
+}
+
+.stock-quick-btn,
+.stock-clear-btn,
+.stock-save-btn {
+  border-radius: 4px;
+  width: 100%;
+  min-height: 36px;
+  font-size: 14px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-family: "Noto Sans SC", sans-serif;
+  transition: all 0.15s;
+}
+
+.stock-quick-btn {
+  border: 1px solid var(--border);
+  background: var(--paper);
+  color: var(--ink-light);
+}
+
+.stock-quick-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.stock-clear-btn {
+  border: 1px solid #e0c0c0;
+  background: #fff7f7;
+  color: #a35b5b;
+}
+
+.stock-clear-btn:hover {
+  background: #ffeded;
+}
+
+.stock-save-btn {
+  border: none;
+  background: var(--ink);
+  color: white;
+  margin-left: 0;
+}
+
+.stock-save-btn:hover {
+  background: var(--accent);
 }
 
 .new-recipe-btn {
