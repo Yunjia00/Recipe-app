@@ -248,6 +248,31 @@ function escHtml(s) {
     .replace(/"/g, "&quot;");
 }
 
+const HOUSE_EMOJI_OPTIONS = ["", "🏠", "🏡", "🏘️", "🌿", "🐱", "🍳", "✨"];
+
+function splitHouseDisplayName(rawName) {
+  const name = String(rawName || "").trim();
+  if (!name) return { emoji: "", baseName: "" };
+  const parts = name.split(/\s+/);
+  const first = parts[0] || "";
+  if (HOUSE_EMOJI_OPTIONS.includes(first)) {
+    return { emoji: first, baseName: parts.slice(1).join(" ").trim() };
+  }
+  return { emoji: "", baseName: name };
+}
+
+function composeHouseDisplayName(emoji, baseName) {
+  const safeEmoji = HOUSE_EMOJI_OPTIONS.includes(emoji || "")
+    ? emoji || ""
+    : "";
+  let safeName = String(baseName || "").trim();
+  const parts = safeName.split(/\s+/);
+  if (parts.length > 0 && HOUSE_EMOJI_OPTIONS.includes(parts[0] || "")) {
+    safeName = parts.slice(1).join(" ").trim();
+  }
+  return safeEmoji ? `${safeEmoji} ${safeName}`.trim() : safeName;
+}
+
 function todayYmd() {
   const now = new Date();
   const tzOffset = now.getTimezoneOffset() * 60000;
@@ -1169,6 +1194,8 @@ async function switchHouse(houseId) {
 }
 
 function openNewHouseDialog() {
+  const emojiSelect = document.getElementById("newHouseEmoji");
+  if (emojiSelect) emojiSelect.value = "";
   document.getElementById("newHouseName").value = "";
   document.getElementById("newHouseOverlay").classList.add("open");
   document.getElementById("houseDropdown").classList.add("hidden");
@@ -1184,8 +1211,11 @@ function openRenameHouseDialog() {
     (h) => h.id === state.currentHouseId,
   );
   if (!currentHouse) return;
+  const { emoji, baseName } = splitHouseDisplayName(currentHouse.name);
+  const emojiSelect = document.getElementById("renameHouseEmoji");
   const input = document.getElementById("renameHouseName");
-  input.value = currentHouse.name;
+  if (emojiSelect) emojiSelect.value = emoji;
+  input.value = baseName;
   document.getElementById("renameHouseOverlay").classList.add("open");
   document.getElementById("houseDropdown").classList.add("hidden");
   setTimeout(() => {
@@ -1200,12 +1230,15 @@ function closeRenameHouseDialog() {
 
 async function confirmRenameHouse() {
   const input = document.getElementById("renameHouseName");
-  const newName = input.value.trim();
+  const emojiSelect = document.getElementById("renameHouseEmoji");
+  const baseName = input.value.trim();
+  const emoji = emojiSelect ? emojiSelect.value : "";
+  const newName = composeHouseDisplayName(emoji, baseName);
   const currentHouse = state.allHouses.find(
     (h) => h.id === state.currentHouseId,
   );
   if (!currentHouse) return;
-  if (!newName) {
+  if (!baseName) {
     showStatus("error", "家名不能为空");
     return;
   }
@@ -1232,8 +1265,12 @@ async function confirmRenameHouse() {
 }
 
 async function createNewHouse() {
-  const name = document.getElementById("newHouseName").value.trim();
-  if (!name) return;
+  const nameInput = document.getElementById("newHouseName");
+  const emojiSelect = document.getElementById("newHouseEmoji");
+  const baseName = nameInput.value.trim();
+  const emoji = emojiSelect ? emojiSelect.value : "";
+  const name = composeHouseDisplayName(emoji, baseName);
+  if (!baseName) return;
   showStatus("saving", "创建中...");
   try {
     const created = await apiAuth("POST", "/houses", { name });

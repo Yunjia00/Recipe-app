@@ -23,7 +23,7 @@
         <div class="header-controls">
           <div class="house-selector">
             <button class="house-btn" onclick="toggleHouseDropdown()">
-              🏠 <span id="currentHouseName">默认家</span>
+              <span id="currentHouseName">默认家</span>
             </button>
             <div id="houseDropdown" class="house-dropdown hidden">
               <div id="houseList" class="house-list"></div>
@@ -245,20 +245,44 @@
         <button class="modal-close" onclick="closeNewHouseDialog()">✕</button>
         <div style="padding: 20px">
           <h2 style="margin: 0 0 20px 0; font-size: 1.5em">创建新家</h2>
-          <input
-            type="text"
-            id="newHouseName"
-            placeholder="家的名字"
-            maxlength="50"
-            style="
-              width: 100%;
-              padding: 10px;
-              margin-bottom: 20px;
-              border: 1px solid var(--border);
-              border-radius: 4px;
-              font-size: 1em;
-            "
-          />
+          <div style="display: flex; gap: 8px; margin-bottom: 20px">
+            <select
+              id="newHouseEmoji"
+              style="
+                width: 56px;
+                min-width: 56px;
+                padding: 10px 6px;
+                border: 1px solid var(--border);
+                border-radius: 4px;
+                font-size: 1em;
+                text-align: center;
+                background: var(--paper);
+              "
+            >
+              <option value="">-</option>
+              <option value="🏠">🏠</option>
+              <option value="🏡">🏡</option>
+              <option value="🏘️">🏘️</option>
+              <option value="🌿">🌿</option>
+              <option value="🐱">🐱</option>
+              <option value="🍳">🍳</option>
+              <option value="✨">✨</option>
+            </select>
+            <input
+              type="text"
+              id="newHouseName"
+              placeholder="家的名字"
+              maxlength="50"
+              style="
+                flex: 1;
+                min-width: 0;
+                padding: 10px;
+                border: 1px solid var(--border);
+                border-radius: 4px;
+                font-size: 1em;
+              "
+            />
+          </div>
           <div style="display: flex; gap: 10px; justify-content: flex-end">
             <button class="btn-secondary" onclick="closeNewHouseDialog()">
               取消
@@ -285,20 +309,44 @@
         </button>
         <div style="padding: 20px">
           <h2 style="margin: 0 0 20px 0; font-size: 1.5em">给家改名</h2>
-          <input
-            type="text"
-            id="renameHouseName"
-            placeholder="新的家名"
-            maxlength="50"
-            style="
-              width: 100%;
-              padding: 10px;
-              margin-bottom: 20px;
-              border: 1px solid var(--border);
-              border-radius: 4px;
-              font-size: 1em;
-            "
-          />
+          <div style="display: flex; gap: 8px; margin-bottom: 20px">
+            <select
+              id="renameHouseEmoji"
+              style="
+                width: 56px;
+                min-width: 56px;
+                padding: 10px 6px;
+                border: 1px solid var(--border);
+                border-radius: 4px;
+                font-size: 1em;
+                text-align: center;
+                background: var(--paper);
+              "
+            >
+              <option value="">-</option>
+              <option value="🏠">🏠</option>
+              <option value="🏡">🏡</option>
+              <option value="🏘️">🏘️</option>
+              <option value="🌿">🌿</option>
+              <option value="🐱">🐱</option>
+              <option value="🍳">🍳</option>
+              <option value="✨">✨</option>
+            </select>
+            <input
+              type="text"
+              id="renameHouseName"
+              placeholder="新的家名"
+              maxlength="50"
+              style="
+                flex: 1;
+                min-width: 0;
+                padding: 10px;
+                border: 1px solid var(--border);
+                border-radius: 4px;
+                font-size: 1em;
+              "
+            />
+          </div>
           <div style="display: flex; gap: 10px; justify-content: flex-end">
             <button class="btn-secondary" onclick="closeRenameHouseDialog()">
               取消
