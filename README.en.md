@@ -1,60 +1,101 @@
 [中文](README.md) | [English](README.en.md)
 
-# My Recipes
+# Meow King's Recipe App
 
-A lightweight recipe app designed for everyday home cooking. It brings recipes, ingredient tracking, and “what do I already have at home?” into one interface so it is easier to decide what to cook.
+A lightweight home-cooking app that combines recipes, ingredient inventory, expiry tracking, and AI-powered suggestions in one interface.
 
-The project uses FastAPI + SQLite with a static single-page HTML frontend. It works well for personal deployment and also serves as a small full-stack learning project.
+Backend: FastAPI + SQLite. Frontend: vanilla HTML/CSS/JS single-page app.
 
 ![App screenshot](documents/screenshots.png)
 
-## Features
+## Current Features
 
-- Browse, search, and filter recipes
-- View recipes by cooking method
-- Mark owned ingredients and match recipes automatically
-- Create, edit, and delete recipes
-- Manage ingredients, categories, and extra categories
+- Recipe management: create, edit, delete, search, filter by cooking method
+- Ingredient management: category-based organization, owned status, stock date, expiry date
+- Expiry handling: one-click clear for expired owned ingredients
+- Multi-house isolation: each house has its own ingredient/category data
+- AI recommendation:
+ 	- Generate cooking suggestions from selected ingredients
+ 	- Model switcher in UI: `mistral-large-latest` / `mistral-medium-latest` / `mistral-small-latest`
+ 	- Markdown output rendering in the frontend
+ 	- Request elapsed-time timer
 
 ## Tech Stack
 
 - FastAPI
 - SQLite
 - Vanilla HTML / CSS / JavaScript
+- OpenAI-compatible SDK (currently configured for Mistral API)
 - Docker / Docker Compose
 
-## Quick Start
+## Local Development
 
 Requirement: Python 3.12+
 
-Using uv:
+1. Install dependencies
 
 ```bash
 uv sync
-uv run uvicorn server.main:app --reload --host 0.0.0.0 --port 3000
 ```
 
-Then open: <http://localhost:3000>
+1. Configure environment variables (recommended in `server/.env`)
+
+```dotenv
+PORT=3001
+RECIPE_PASSWORD=your-password
+
+LLM_API_URL=https://api.mistral.ai/v1
+LLM_API_KEY=your-api-key
+LLM_MODEL=mistral-large-latest
+LLM_TIMEOUT_SECONDS=20
+```
+
+1. Start server (recommended from `server/` directory)
+
+```bash
+cd server
+uv run uvicorn main:app --reload --log-level debug
+```
+
+1. Open in browser
+
+- If you explicitly set a port in command, use that port
+- If you rely on `.env` with `PORT=3001`, open <http://localhost:3001>
+
+## Environment Variables
+
+- `PORT`: server port
+- `RECIPE_PASSWORD`: write-operation password (validated via `x-recipe-password` header)
+- `DB_PATH`: SQLite path (default: `data/recipes.db`)
+- `LLM_API_URL`: OpenAI-compatible API base URL (Mistral example: `https://api.mistral.ai/v1`)
+- `LLM_API_KEY`: LLM API key
+- `LLM_MODEL`: default model used when request does not provide one
+- `LLM_TIMEOUT_SECONDS`: LLM request timeout seconds
+
+## Docker
+
+```bash
+docker compose up --build -d
+```
+
+Note: current `docker-compose.yml` uses an external network `homelab`. If it does not exist on your machine, create it first or update compose networking.
 
 ## Project Structure
 
 ```text
 .
-├── documents/           # Screenshots and extra docs
+├── data/                # SQLite files
+├── documents/           # Deployment docs and screenshots
 ├── public/              # Static frontend
 ├── server/              # FastAPI backend
-├── data/                # SQLite database files
 ├── Dockerfile
 ├── docker-compose.yml
-└── pyproject.toml
+├── pyproject.toml
+├── README.md
+└── README.en.md
 ```
 
-## Deployment
+## Deployment Docs
 
-For deployment steps, environment variables, and Docker notes, see [documents/DEPLOYMENT.en.md](documents/DEPLOYMENT.en.md).
-
-## Data
-
-- The default database file is data/recipes.db
-- Default seed data is imported from server/defaults.json on first startup
-- Edit operations are protected by a password sent in the request header
+- Chinese: [documents/DEPLOYMENT.md](documents/DEPLOYMENT.md)
+- English: [documents/DEPLOYMENT.en.md](documents/DEPLOYMENT.en.md)

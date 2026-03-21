@@ -1,25 +1,70 @@
 import os
 import json
 import sqlite3
+import logging
 from datetime import date
 from pathlib import Path
 from time import time_ns
 from typing import Optional
+import httpx
 from pydantic import BaseModel
 from dotenv import load_dotenv
+from openai import OpenAI
 from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.staticfiles import StaticFiles
 from routers import changelog
 
-load_dotenv()
+ROOT_ENV_PATH = Path(__file__).parent.parent / ".env"
+SERVER_ENV_PATH = Path(__file__).parent / ".env"
+load_dotenv(ROOT_ENV_PATH)
+load_dotenv(SERVER_ENV_PATH, override=True)
 app = FastAPI()
 app.include_router(changelog.router)
 
 
+logger = logging.getLogger("uvicorn.error")
+logger.info("这是一条自定义日志")
 ## Configurations
 PORT = int(os.getenv("PORT", 3000))
 DB_PATH = os.getenv("DB_PATH", Path(__file__).parent.parent / "data" / "recipes.db")
 RECIPE_PASSWORD = os.getenv("RECIPE_PASSWORD", "changeme")
+LLM_API_URL = os.getenv("LLM_API_URL", "").strip()
+LLM_API_KEY = (
+    os.getenv("LLM_API_KEY", "").strip() or os.getenv("ARK_API_KEY", "").strip()
+)
+LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
+LLM_TIMEOUT_SECONDS = float(os.getenv("LLM_TIMEOUT_SECONDS", "10"))
+logger.info(f"{LLM_MODEL}")
+logger.info(f"{LLM_TIMEOUT_SECONDS}")
+logger.info(f"{LLM_API_URL}")
+
+
+def resolve_llm_api_url(raw_url: str) -> str:
+    url = (raw_url or "").strip().rstrip("/")
+    if not url:
+        return ""
+    if url.endswith("/chat/completions"):
+        # OpenAI SDK expects base_url, not completions path.
+        return url[: -len("/chat/completions")]
+    return url
+
+
+def get_llm_client() -> Optional[OpenAI]:
+    if not LLM_API_URL or not LLM_API_KEY:
+        return None
+    try:
+        # 使用 httpx.Timeout 设置正确的超时配置
+        timeout = httpx.Timeout(LLM_TIMEOUT_SECONDS)
+        return OpenAI(
+            base_url=resolve_llm_api_url(LLM_API_URL),
+            api_key=LLM_API_KEY,
+            timeout=timeout,
+            # 关闭自动重试，避免总耗时远超 timeout。
+            max_retries=0,
+        )
+    except Exception as e:
+        logger.warning(f"Failed to initialize LLM client: {e}")
+        return None
 
 
 def init_db():
@@ -132,7 +177,6 @@ def init_db():
         conn.commit()
 
     count = conn.execute("SELECT COUNT(*) FROM recipes").fetchone()[0]
-    print(count)
     if count == 0:  # write default data
         path = Path(__file__).parent / "defaults.json"
         data = json.loads(path.read_text())
@@ -251,6 +295,17 @@ class HouseScopeBody(BaseModel):
     house_id: int = 1
 
 
+class AiRecommendBody(BaseModel):
+    house_id: int = 1
+    servings: str = "2人"
+    max_minutes: int = 30
+    model: str = "mistral-large-latest"
+    preferences: str = ""
+    strict_required_only: bool = True
+    top_k: int = 3
+    ingredient_names: list[str] = []
+
+
 # Authentication Function
 def require_auth(x_recipe_password: str = Header(default="")):
     if x_recipe_password != RECIPE_PASSWORD:
@@ -268,6 +323,117 @@ def normalize_date(date_str: Optional[str], field_label: str) -> Optional[str]:
     except ValueError:
         raise HTTPException(status_code=400, detail=f"{field_label}格式应为 YYYY-MM-DD")
     return normalized
+
+
+def llm_generate_text(
+    selected_ingredients: list[str],
+    servings: str,
+    max_minutes: int,
+    preferences: str,
+    model: str,
+) -> Optional[str]:
+    if not LLM_API_URL or not LLM_API_KEY:
+        logger.error(
+            "LLM config missing: api_url or api_key is empty. Please set LLM_API_URL and LLM_API_KEY in .env file or environment variables."
+        )
+        return None
+
+    prompt_text = (
+        "请根据以下用户信息给出今天做饭建议："
+        f"已选食材：{', '.join(selected_ingredients)}。"
+        f"用餐人数：{servings}。"
+        f"希望时长：{max_minutes}分钟内。"
+        f"口味偏好/忌口：{preferences or '无'}。"
+    )
+
+    client = get_llm_client()
+    if client is None:
+        logger.error(
+            "Failed to initialize LLM client. Check LLM_API_URL and LLM_API_KEY configuration."
+        )
+        return None
+
+    system_prompt = """你是家庭烹饪助手。严格按照以下格式输出，不得添加任何额外内容：
+
+                    ### 菜名一：[菜名]
+                    **推荐理由**：[一句话说明]
+                    **烹饪步骤**：
+                    1. [步骤]
+                    2. [步骤]
+                    3. [步骤]
+                    **可替代食材**：[食材A可用食材B替代]
+
+                    ---
+                    
+                    ### 菜名二：[菜名]
+                    **推荐理由**：[一句话说明]
+                    **烹饪步骤**：
+                    1. [步骤]
+                    2. [步骤]
+                    3. [步骤]
+                    **可替代食材**：[食材A可用食材B替代]
+
+                    ---
+                    **时间安排**：[说明如何在时间限制内同步操作]
+
+                    规则：
+                    - 只推荐2道菜
+                    - 步骤简洁，每步不超过30字
+                    - 禁止输出JSON
+                    - 禁止在格式之外添加任何开场白或结束语"""
+
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (system_prompt),
+                },
+                {
+                    "role": "user",
+                    "content": prompt_text,
+                },
+            ],
+            max_tokens=600,  # 限制输出长度，防止啰嗦
+            temperature=0.7,  # 稍微降低随机性，让输出更稳定
+        )
+    except httpx.TimeoutException as e:
+        logger.error(f"LLM request timeout after {LLM_TIMEOUT_SECONDS}s: {e}")
+        return None
+    except httpx.ConnectError as e:
+        logger.error(f"LLM connection error: {e}")
+        return None
+    except Exception as e:
+        logger.exception(f"LLM request failed: {e}")
+        return None
+
+    try:
+        choices = getattr(response, "choices", None) or []
+        if choices:
+            message = getattr(choices[0], "message", None)
+            content = getattr(message, "content", None)
+            if isinstance(content, str) and content.strip():
+                return content.strip()
+    except Exception:
+        pass
+
+    # Fallback extraction path for providers with slightly different payload formats.
+    try:
+        payload = response.model_dump()
+        choices = payload.get("choices", []) or []
+        if choices:
+            message = (
+                choices[0].get("message", {}) if isinstance(choices[0], dict) else {}
+            )
+            text = message.get("content") if isinstance(message, dict) else None
+            if isinstance(text, str) and text.strip():
+                return text.strip()
+    except Exception as e:
+        logger.warning("LLM fallback text extraction failed: %s", e)
+
+    logger.error("LLM returned no printable text")
+    return None
 
 
 # Routes of houses
@@ -392,6 +558,61 @@ def save_recipe(recipe_id: int, body: RecipeBody, db=Depends(get_db)):
 def delete_recipe(recipe_id: int, db=Depends(get_db)):
     db.execute("DELETE FROM recipes WHERE id=?", [recipe_id])
     db.commit()
+
+
+@app.post("/api/ai/recommend")
+def ai_recommend(body: AiRecommendBody, db=Depends(get_db)):
+    allowed_models = {
+        "mistral-large-latest",
+        "mistral-medium-latest",
+        "mistral-small-latest",
+    }
+    selected_model = body.model.strip() if body.model else ""
+    if selected_model not in allowed_models:
+        selected_model = (
+            LLM_MODEL if LLM_MODEL in allowed_models else "mistral-large-latest"
+        )
+
+    if body.ingredient_names:
+        selected_names = [
+            str(name).strip() for name in body.ingredient_names if str(name).strip()
+        ]
+    else:
+        rows = db.execute(
+            "SELECT name FROM ingredients WHERE house_id=? AND owned=1 ORDER BY name",
+            [body.house_id],
+        ).fetchall()
+        selected_names = [row["name"] for row in rows]
+
+    if not selected_names:
+        raise HTTPException(
+            status_code=400, detail="当前没有可用食材，请先在食材页勾选已有食材。"
+        )
+
+    # Check if LLM is configured before calling
+    if not LLM_API_URL or not LLM_API_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="LLM 未配置。请在 .env 文件或环境变量中设置 LLM_API_URL 和 LLM_API_KEY。",
+        )
+
+    llm_text = llm_generate_text(
+        selected_ingredients=selected_names,
+        servings=body.servings,
+        max_minutes=body.max_minutes,
+        preferences=body.preferences,
+        model=selected_model,
+    )
+
+    if not llm_text:
+        raise HTTPException(status_code=503, detail="LLM 请求失败，请检查日志。")
+
+    return {
+        "generated_at": date.today().isoformat(),
+        "trace_id": f"ai-{time_ns()}",
+        "message": "ok",
+        "text": llm_text,
+    }
 
 
 # Routes of ingredients

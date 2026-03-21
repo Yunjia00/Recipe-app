@@ -184,6 +184,25 @@ let state = {
   stockEditorOpen: {},
 };
 
+let aiRecommendState = {
+  stage: "idle",
+  ingredientNames: [],
+  selectedMap: {},
+  servings: "2人",
+  maxMinutes: 30,
+  model: "mistral-large-latest",
+  preferences: "",
+  topK: 3,
+  result: null,
+  errorText: "",
+  lastPayload: null,
+  lastSubtitleIndex: -1,
+  loadingTimer: null,
+  requestStartTime: null,
+  elapsedSeconds: 0,
+  elapsedTimer: null,
+};
+
 async function loadAll() {
   const [recipesData, housesData] = await Promise.all([
     api("GET", "/recipes"),
@@ -444,6 +463,513 @@ function renderRecipes() {
     </div>`;
     })
     .join("");
+}
+
+// ─── AI RECOMMEND ────────────────────────────────────────────────────────────
+
+function clearAiLoadingTimer() {
+  if (aiRecommendState.loadingTimer) {
+    clearInterval(aiRecommendState.loadingTimer);
+    aiRecommendState.loadingTimer = null;
+  }
+  if (aiRecommendState.elapsedTimer) {
+    clearInterval(aiRecommendState.elapsedTimer);
+    aiRecommendState.elapsedTimer = null;
+  }
+}
+
+function getAiElapsedSeconds() {
+  if (!aiRecommendState.requestStartTime)
+    return aiRecommendState.elapsedSeconds;
+  return Math.floor((Date.now() - aiRecommendState.requestStartTime) / 1000);
+}
+
+function openAiRecommendModal() {
+  const owned = state.ingredients
+    .filter((i) => i.owned)
+    .map((i) => i.name)
+    .sort((a, b) => a.localeCompare(b, "zh-CN"));
+
+  aiRecommendState.ingredientNames = owned;
+  aiRecommendState.selectedMap = {};
+  owned.forEach((name) => {
+    aiRecommendState.selectedMap[name] = true;
+  });
+  aiRecommendState.stage = "config";
+  aiRecommendState.result = null;
+  aiRecommendState.errorText = "";
+  aiRecommendState.lastPayload = null;
+
+  renderAiRecommendModal();
+  document.getElementById("aiRecommendOverlay").classList.add("open");
+}
+
+function closeAiRecommendModal() {
+  clearAiLoadingTimer();
+  document.getElementById("aiRecommendOverlay").classList.remove("open");
+}
+
+function closeAiRecommendOnOverlay(e) {
+  if (e.target === document.getElementById("aiRecommendOverlay")) {
+    closeAiRecommendModal();
+  }
+}
+
+function setAiIngredient(name, checked) {
+  aiRecommendState.selectedMap[name] = !!checked;
+  updateAiSelectedCount();
+}
+
+function updateAiSelectedCount() {
+  const el = document.getElementById("aiSelectedCount");
+  if (!el) return;
+  const selectedCount = Object.values(aiRecommendState.selectedMap).filter(
+    Boolean,
+  ).length;
+  el.textContent = `${selectedCount}`;
+}
+
+function renderAiRecommendConfig() {
+  const owned = aiRecommendState.ingredientNames;
+  if (!owned.length) {
+    return `
+      <div class="ai-empty-wrap">
+        <div class="ai-title">智能推荐</div>
+        <div class="ai-subtitle">当前家里还没有勾选已拥有食材。</div>
+        <div class="ai-actions-row">
+          <button class="btn-secondary" onclick="closeAiRecommendModal()">取消</button>
+          <button class="btn-primary" onclick="closeAiRecommendModal(); switchView('ingredients', document.getElementById('tab-ingredients'))">去食材页勾选</button>
+        </div>
+      </div>`;
+  }
+
+  const chips = owned
+    .map(
+      (name) => `
+      <label class="ai-ing-option">
+        <input
+          type="checkbox"
+          class="ai-ing-check"
+          data-name="${escHtml(name)}"
+          ${aiRecommendState.selectedMap[name] ? "checked" : ""}
+          onchange="setAiIngredient(this.dataset.name, this.checked)"
+        />
+        <span>${escHtml(name)}</span>
+      </label>`,
+    )
+    .join("");
+
+  const selectedCount = Object.values(aiRecommendState.selectedMap).filter(
+    Boolean,
+  ).length;
+
+  return `
+    <div class="ai-title">用现有食材智能推荐今天做什么</div>
+    <div class="ai-subtitle">已读取当前家的拥有食材，默认全部参与推荐。</div>
+
+    <div class="ai-section-head">
+      <span>已选食材 <strong id="aiSelectedCount">${selectedCount}</strong> / ${owned.length}</span>
+    </div>
+    <div class="ai-ing-grid">${chips}</div>
+
+    <div class="ai-form-grid">
+      <label class="ai-field">
+        <span>用餐人数</span>
+        <select id="aiServings">
+          <option value="1人" ${aiRecommendState.servings === "1人" ? "selected" : ""}>1人</option>
+          <option value="2人" ${aiRecommendState.servings === "2人" ? "selected" : ""}>2人</option>
+          <option value="3-4人" ${aiRecommendState.servings === "3-4人" ? "selected" : ""}>3-4人</option>
+          <option value="5人以上" ${aiRecommendState.servings === "5人以上" ? "selected" : ""}>5人以上</option>
+        </select>
+      </label>
+      <label class="ai-field">
+        <span>预计时长</span>
+        <select id="aiMaxMinutes">
+          <option value="15" ${aiRecommendState.maxMinutes === 15 ? "selected" : ""}>15分钟内</option>
+          <option value="30" ${aiRecommendState.maxMinutes === 30 ? "selected" : ""}>30分钟内</option>
+          <option value="45" ${aiRecommendState.maxMinutes === 45 ? "selected" : ""}>45分钟内</option>
+          <option value="60" ${aiRecommendState.maxMinutes === 60 ? "selected" : ""}>60分钟内</option>
+        </select>
+      </label>
+      <label class="ai-field">
+        <span>模型</span>
+        <select id="aiModel">
+          <option value="mistral-large-latest" ${aiRecommendState.model === "mistral-large-latest" ? "selected" : ""}>大模型</option>
+          <option value="mistral-medium-latest" ${aiRecommendState.model === "mistral-medium-latest" ? "selected" : ""}>中模型</option>
+          <option value="mistral-small-latest" ${aiRecommendState.model === "mistral-small-latest" ? "selected" : ""}>小模型</option>
+        </select>
+      </label>
+    </div>
+
+    <label class="ai-field">
+      <span>口味或忌口（可选）</span>
+      <input id="aiPreferences" type="text" placeholder="例如：少辣、低油、高蛋白" value="${escHtml(aiRecommendState.preferences)}" />
+    </label>
+
+    <div class="ai-actions-row">
+      <button class="btn-secondary" onclick="closeAiRecommendModal()">取消</button>
+      <button class="btn-primary" onclick="startAiRecommend()">开始推荐</button>
+    </div>`;
+}
+
+function renderAiRecommendLoading() {
+  return `
+    <div class="ai-loading-wrap compact">
+      <div class="ai-result-head">
+        <div class="ai-status-left">
+          <div class="spinner ai-spinner compact"></div>
+          <div class="ai-title ai-title-compact">正在生成推荐</div>
+        </div>
+        <div class="ai-timer ai-timer-pin">耗时: <span id="aiElapsedTimer">0</span>s</div>
+      </div>
+      <div class="ai-loading-text" id="aiLoadingText">正在分析你当前可用食材...</div>
+      <div class="ai-actions-row">
+        <button class="btn-secondary" onclick="closeAiRecommendModal()">后台继续，先关闭</button>
+      </div>
+    </div>`;
+}
+
+function renderMarkdownSafe(rawText) {
+  const text = String(rawText || "").trim();
+  if (!text) return "<p>（无内容）</p>";
+
+  // marked + DOMPurify are loaded from CDN in index.html.
+  if (window.marked && window.DOMPurify) {
+    const html = window.marked.parse(text, {
+      gfm: true,
+      breaks: true,
+    });
+    return window.DOMPurify.sanitize(html);
+  }
+
+  // Fallback: render a lightweight markdown subset when CDN is unavailable.
+  return renderMarkdownFallback(text);
+}
+
+function renderInlineMarkdown(text) {
+  let out = escHtml(text || "");
+  out = out.replace(/`([^`]+)`/g, "<code>$1</code>");
+  out = out.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  out = out.replace(/\*([^*]+)\*/g, "<em>$1</em>");
+  return out;
+}
+
+function renderMarkdownFallback(text) {
+  const lines = text.split(/\r?\n/);
+  let html = "";
+  let inUl = false;
+  let inOl = false;
+  let inCode = false;
+  let codeBuffer = [];
+
+  function closeLists() {
+    if (inUl) {
+      html += "</ul>";
+      inUl = false;
+    }
+    if (inOl) {
+      html += "</ol>";
+      inOl = false;
+    }
+  }
+
+  function flushCode() {
+    if (inCode) {
+      html += `<pre><code>${escHtml(codeBuffer.join("\n"))}</code></pre>`;
+      inCode = false;
+      codeBuffer = [];
+    }
+  }
+
+  for (const rawLine of lines) {
+    const line = rawLine || "";
+    const trimmed = line.trim();
+
+    if (trimmed.startsWith("```")) {
+      closeLists();
+      if (inCode) {
+        flushCode();
+      } else {
+        inCode = true;
+      }
+      continue;
+    }
+
+    if (inCode) {
+      codeBuffer.push(line);
+      continue;
+    }
+
+    if (!trimmed) {
+      closeLists();
+      continue;
+    }
+
+    const heading = trimmed.match(/^(#{1,3})\s+(.+)$/);
+    if (heading) {
+      closeLists();
+      const level = heading[1].length;
+      html += `<h${level}>${renderInlineMarkdown(heading[2])}</h${level}>`;
+      continue;
+    }
+
+    const ul = trimmed.match(/^[-*]\s+(.+)$/);
+    if (ul) {
+      if (!inUl) {
+        if (inOl) {
+          html += "</ol>";
+          inOl = false;
+        }
+        html += "<ul>";
+        inUl = true;
+      }
+      html += `<li>${renderInlineMarkdown(ul[1])}</li>`;
+      continue;
+    }
+
+    const ol = trimmed.match(/^\d+\.\s+(.+)$/);
+    if (ol) {
+      if (!inOl) {
+        if (inUl) {
+          html += "</ul>";
+          inUl = false;
+        }
+        html += "<ol>";
+        inOl = true;
+      }
+      html += `<li>${renderInlineMarkdown(ol[1])}</li>`;
+      continue;
+    }
+
+    closeLists();
+    html += `<p>${renderInlineMarkdown(trimmed)}</p>`;
+  }
+
+  flushCode();
+  closeLists();
+  return html || `<pre>${escHtml(text)}</pre>`;
+}
+
+function getPlayfulAiSubtitle() {
+  const subtitles = [
+    "喵王拍板：今天这几道，稳稳拿下。",
+    "小喵巡完冰箱，叼来了这份菜单。",
+    "喵王御膳房已开张，请查收今日推荐。",
+    "喵咪点头认证：这顿做起来省心又香。",
+    "喵王掐了掐爪，这套搭配正当时。",
+    "猫爪雷达已锁定，今晚就按这个开火。",
+    "喵咪在灶台边打滚，表示这份很可以。",
+    "喵王发令：铲子就位，按这版开做。",
+  ];
+
+  if (subtitles.length === 1) return subtitles[0];
+
+  let idx = Math.floor(Math.random() * subtitles.length);
+  if (idx === aiRecommendState.lastSubtitleIndex) {
+    idx = (idx + 1) % subtitles.length;
+  }
+  aiRecommendState.lastSubtitleIndex = idx;
+  return subtitles[idx];
+}
+
+function renderAiRecommendResult() {
+  const res = aiRecommendState.result || {};
+  const rawText = String(res.text || "").trim();
+  const renderedHtml = renderMarkdownSafe(rawText);
+  const elapsed = aiRecommendState.elapsedSeconds;
+  const subtitle = getPlayfulAiSubtitle();
+  return `
+    <div class="ai-result-head">
+      <div class="ai-title">推荐结果</div>
+      <div class="ai-timer ai-timer-pin">耗时: ${elapsed}s</div>
+    </div>
+    <div class="ai-subtitle">${escHtml(subtitle)}</div>
+    <div class="ai-markdown-output">${renderedHtml}</div>
+    <div class="ai-actions-row">
+      <button class="btn-secondary" onclick="aiRecommendState.stage='config'; renderAiRecommendModal()">重新设置</button>
+      <button class="btn-primary" onclick="rerollAiRecommend()">换一批推荐</button>
+    </div>`;
+}
+
+function renderAiRecommendError() {
+  const msg = aiRecommendState.errorText || "智能推荐目前不可用";
+  const elapsed = aiRecommendState.elapsedSeconds;
+  return `
+    <div class="ai-result-head">
+      <div class="ai-title">推荐失败</div>
+      <div class="ai-timer ai-timer-pin">耗时: ${elapsed}s</div>
+    </div>
+    <div class="ai-subtitle" style="white-space: pre-wrap; word-break: break-word;">${escHtml(msg)}</div>
+    <div class="ai-actions-row">
+      <button class="btn-secondary" onclick="aiRecommendState.stage='config'; renderAiRecommendModal()">返回设置</button>
+      <button class="btn-primary" onclick="startAiRecommend()">重试</button>
+    </div>`;
+}
+
+function renderAiRecommendModal() {
+  clearAiLoadingTimer();
+  const box = document.getElementById("aiRecommendContent");
+  if (!box) return;
+
+  if (aiRecommendState.stage === "loading") {
+    box.innerHTML = renderAiRecommendLoading();
+    const stages = [
+      "正在分析你当前可用食材...",
+      "正在匹配最容易执行的做法...",
+      "正在整理推荐理由和时长...",
+    ];
+    let idx = 0;
+    aiRecommendState.loadingTimer = setInterval(() => {
+      const el = document.getElementById("aiLoadingText");
+      if (!el) return;
+      idx = (idx + 1) % stages.length;
+      el.textContent = stages[idx];
+    }, 1200);
+    return;
+  }
+
+  if (aiRecommendState.stage === "result") {
+    box.innerHTML = renderAiRecommendResult();
+    return;
+  }
+
+  if (aiRecommendState.stage === "error") {
+    box.innerHTML = renderAiRecommendError();
+    return;
+  }
+
+  box.innerHTML = renderAiRecommendConfig();
+}
+
+function collectAiPayloadFromForm() {
+  const selectedNames = Object.keys(aiRecommendState.selectedMap).filter(
+    (name) => aiRecommendState.selectedMap[name],
+  );
+  aiRecommendState.servings =
+    document.getElementById("aiServings")?.value || aiRecommendState.servings;
+  aiRecommendState.maxMinutes = parseInt(
+    document.getElementById("aiMaxMinutes")?.value ||
+      `${aiRecommendState.maxMinutes}`,
+    10,
+  );
+  aiRecommendState.model =
+    document.getElementById("aiModel")?.value || aiRecommendState.model;
+  aiRecommendState.preferences =
+    document.getElementById("aiPreferences")?.value.trim() || "";
+
+  return {
+    house_id: state.currentHouseId,
+    servings: aiRecommendState.servings,
+    max_minutes: aiRecommendState.maxMinutes,
+    model: aiRecommendState.model,
+    preferences: aiRecommendState.preferences,
+    top_k: aiRecommendState.topK,
+    ingredient_names: selectedNames,
+  };
+}
+
+async function startAiRecommend() {
+  const payload = collectAiPayloadFromForm();
+  if (!payload.ingredient_names.length) {
+    showStatus("error", "请至少选择一个食材");
+    return;
+  }
+
+  aiRecommendState.lastPayload = payload;
+  aiRecommendState.stage = "loading";
+  aiRecommendState.requestStartTime = Date.now();
+  aiRecommendState.elapsedSeconds = 0;
+  renderAiRecommendModal();
+
+  aiRecommendState.elapsedTimer = setInterval(() => {
+    if (aiRecommendState.requestStartTime) {
+      const elapsed = getAiElapsedSeconds();
+      aiRecommendState.elapsedSeconds = elapsed;
+      const el = document.getElementById("aiElapsedTimer");
+      if (el) {
+        el.textContent = String(elapsed);
+      }
+    }
+  }, 100);
+
+  try {
+    const data = await api("POST", "/ai/recommend", payload);
+    aiRecommendState.result = data;
+    aiRecommendState.elapsedSeconds = getAiElapsedSeconds();
+    aiRecommendState.stage = "result";
+    aiRecommendState.errorText = "";
+    clearAiLoadingTimer();
+    renderAiRecommendModal();
+    showStatus("saved", "已获取智能推荐响应");
+  } catch (e) {
+    aiRecommendState.stage = "error";
+    const errorMsg =
+      (e && e.message ? String(e.message) : "") || "智能推荐目前不可用";
+    const elapsed = aiRecommendState.requestStartTime
+      ? Math.floor((Date.now() - aiRecommendState.requestStartTime) / 1000)
+      : 0;
+    aiRecommendState.elapsedSeconds = elapsed;
+    if (elapsed > 10 && errorMsg.includes("不可用")) {
+      aiRecommendState.errorText = `${errorMsg}\n（耗时：${elapsed}s，可能是服务响应超时，请尝试重试）`;
+    } else {
+      aiRecommendState.errorText = errorMsg;
+    }
+    clearAiLoadingTimer();
+    renderAiRecommendModal();
+    showStatus("error", "智能推荐失败");
+  }
+}
+
+async function rerollAiRecommend() {
+  const payload = aiRecommendState.lastPayload;
+  if (!payload) {
+    aiRecommendState.stage = "config";
+    renderAiRecommendModal();
+    return;
+  }
+
+  aiRecommendState.stage = "loading";
+  aiRecommendState.requestStartTime = Date.now();
+  aiRecommendState.elapsedSeconds = 0;
+  renderAiRecommendModal();
+
+  aiRecommendState.elapsedTimer = setInterval(() => {
+    if (aiRecommendState.requestStartTime) {
+      const elapsed = getAiElapsedSeconds();
+      aiRecommendState.elapsedSeconds = elapsed;
+      const el = document.getElementById("aiElapsedTimer");
+      if (el) {
+        el.textContent = String(elapsed);
+      }
+    }
+  }, 100);
+
+  try {
+    const data = await api("POST", "/ai/recommend", payload);
+    aiRecommendState.result = data;
+    aiRecommendState.elapsedSeconds = getAiElapsedSeconds();
+    aiRecommendState.stage = "result";
+    aiRecommendState.errorText = "";
+    clearAiLoadingTimer();
+    renderAiRecommendModal();
+    showStatus("saved", "已获取智能推荐响应");
+  } catch (e) {
+    aiRecommendState.stage = "error";
+    const errorMsg =
+      (e && e.message ? String(e.message) : "") || "智能推荐目前不可用";
+    const elapsed = aiRecommendState.requestStartTime
+      ? Math.floor((Date.now() - aiRecommendState.requestStartTime) / 1000)
+      : 0;
+    aiRecommendState.elapsedSeconds = elapsed;
+    if (elapsed > 10 && errorMsg.includes("不可用")) {
+      aiRecommendState.errorText = `${errorMsg}\n（耗时：${elapsed}s，可能是服务响应超时，请尝试重试）`;
+    } else {
+      aiRecommendState.errorText = errorMsg;
+    }
+    clearAiLoadingTimer();
+    renderAiRecommendModal();
+    showStatus("error", "智能推荐失败");
+  }
 }
 
 // ─── RECIPE MODAL ─────────────────────────────────────────────────────────────

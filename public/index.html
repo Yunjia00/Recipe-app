@@ -88,6 +88,9 @@
               placeholder="搜索菜名..."
               oninput="renderRecipes()"
             />
+            <button class="ai-recommend-btn" onclick="openAiRecommendModal()">
+              ✨ 智能推荐
+            </button>
             <button class="new-recipe-btn" onclick="openNewRecipe()">
               ＋ 新建菜谱
             </button>
@@ -228,6 +231,17 @@
       <div class="modal" id="recipeModal">
         <button class="modal-close" onclick="closeModal()">✕</button>
         <div id="modalContent"></div>
+      </div>
+    </div>
+
+    <div
+      class="modal-overlay"
+      id="aiRecommendOverlay"
+      onclick="closeAiRecommendOnOverlay(event)"
+    >
+      <div class="modal ai-modal" onclick="event.stopPropagation()">
+        <button class="modal-close" onclick="closeAiRecommendModal()">✕</button>
+        <div id="aiRecommendContent"></div>
       </div>
     </div>
 
@@ -416,6 +430,8 @@
       </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
     <script src="app.js"></script>
   </body>
 
