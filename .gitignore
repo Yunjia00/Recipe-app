@@ -6,3 +6,5 @@ node_modules/
 .venv/
 .DS_Store
 .vscode/
+
+deploy.sh
